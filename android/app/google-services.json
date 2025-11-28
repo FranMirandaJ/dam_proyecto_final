@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "857518951522",
+    "project_id": "checktec-cc3d6",
+    "storage_bucket": "checktec-cc3d6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:857518951522:android:54be4fbfe652f43338d53b",
+        "android_client_info": {
+          "package_name": "com.example.proyecto_final"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALvzmV_47RnEd6642yaCyoFkAZwtKYFxc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
