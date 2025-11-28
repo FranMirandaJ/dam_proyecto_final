@@ -43,8 +43,6 @@ class _LoginState extends State<Login> {
     }
   }
 
-  void _toggleForm() {}
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
