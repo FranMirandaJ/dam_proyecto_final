@@ -1,46 +1,111 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:proyecto_final/providers/user_provider.dart';
 import 'package:proyecto_final/services/auth.dart';
+import 'package:proyecto_final/screens/students/home_alumno.dart';
+import 'package:proyecto_final/screens/teachers/home_docente.dart';
 
-class Login extends StatefulWidget {
-  const Login({super.key});
+class LoginRegister extends StatefulWidget {
+  const LoginRegister({super.key});
 
   @override
-  State<Login> createState() => _LoginState();
+  State<LoginRegister> createState() => _LoginRegisterState();
 }
 
-class _LoginState extends State<Login> {
+class _LoginRegisterState extends State<LoginRegister> {
   final userController = TextEditingController();
   final passwordController = TextEditingController();
+  final fullNameController = TextEditingController();
   final Auth _auth = Auth();
 
   bool _isLogin = true;
+  bool _isLoading = false;
   bool _isPasswordVisible = false;
   String? _errorMessage;
 
   void handlerSubmit() async {
+    // Clear previous error messages
     setState(() {
       _errorMessage = null;
+      _isLoading = true;
     });
+
+    // Hide keyboard
+    FocusScope.of(context).unfocus();
 
     try {
       if (_isLogin) {
-        await _auth.signInWithEmailAndPassword(
+        Map<String, dynamic> userData = await _auth.signInWithEmailAndPassword(
           email: userController.text,
           password: passwordController.text,
         );
-        // El stream en main.dart se encargará de la navegación
+
+        if (mounted) {
+          Provider.of<UserProvider>(context, listen: false).setUser(userData);
+        }
+
+        // ============= DATOS DEL USUARIO LOGEADO ==============
+        String rol = userData['rol'];
+        String nombre = userData['nombre'];
+        String email = userData['email'];
+        String uid = userData['uid'];
+        // =======================================================
+
+        if (rol == 'alumno') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
+          );
+          print("rol de alumno");
+        } else if (rol == 'docente') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const TeacherHomeScreen()),
+          );
+          print("rol de docente");
+        } else {
+          print("rol de admin");
+        }
       } else {
         await _auth.createUserWithEmailAndPassword(
           email: userController.text,
           password: passwordController.text,
+          fullName: fullNameController.text,
         );
-        // El stream en main.dart se encargará de la navegación
+
+        // Clear fields
+        fullNameController.clear();
+        userController.clear();
+        passwordController.clear();
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "¡Cuenta creada con éxito! Por favor, inicia sesión.",
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        // Switch to login form
+        setState(() {
+          _isLogin = true;
+        });
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _errorMessage = e.message;
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -51,8 +116,8 @@ class _LoginState extends State<Login> {
         width: double.infinity,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF2C69F0), Color(0xff49a09d)],
-            stops: [0, 1],
+            colors: [const Color(0xFF2C69F0), const Color(0xff49a09d)],
+            stops: const [0, 1],
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
           ),
@@ -60,14 +125,14 @@ class _LoginState extends State<Login> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(height: 100),
+            const SizedBox(height: 80),
             Image.asset(
               "assets/qr_icon.png",
               height: 80,
               width: 80,
               fit: BoxFit.cover,
             ),
-            Padding(
+            const Padding(
               padding: EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -83,19 +148,17 @@ class _LoginState extends State<Login> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    _isLogin
-                        ? "¡Bienvenido de nuevo!"
-                        : "Crea una nueva cuenta",
+                    "¡Bienvenido de nuevo!",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white, fontSize: 20),
                   ),
-                  SizedBox(height: 60),
+                  SizedBox(height: 40),
                 ],
               ),
             ),
             Expanded(
               child: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(40),
@@ -103,17 +166,36 @@ class _LoginState extends State<Login> {
                   ),
                 ),
                 child: ListView(
-                  padding: EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(20),
                   children: [
-                    SizedBox(height: 30),
-                    Text(
+                    const SizedBox(height: 30),
+                    if (!_isLogin) ...[
+                      const Text(
+                        "Nombre completo",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      TextField(
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        controller: fullNameController,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    const Text(
                       "Correo electrónico",
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     TextField(
                       decoration: InputDecoration(
                         border: OutlineInputBorder(
@@ -122,19 +204,19 @@ class _LoginState extends State<Login> {
                       ),
                       controller: userController,
                     ),
-                    SizedBox(height: 20),
-                    Text(
+                    const SizedBox(height: 20),
+                    const Text(
                       "Contraseña",
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     TextField(
                       obscureText: !_isPasswordVisible,
                       decoration: InputDecoration(
-                        hintStyle: TextStyle(color: Colors.grey),
+                        hintStyle: const TextStyle(color: Colors.grey),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -159,27 +241,34 @@ class _LoginState extends State<Login> {
                         padding: const EdgeInsets.only(top: 10.0),
                         child: Text(
                           _errorMessage!,
-                          style: TextStyle(color: Colors.red),
+                          style: const TextStyle(color: Colors.red),
                           textAlign: TextAlign.center,
                         ),
                       ),
-                    SizedBox(height: 30),
+                    const SizedBox(height: 30),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: () {
-                          handlerSubmit();
-                        },
+                        onPressed: _isLoading ? null : handlerSubmit, // Deshabilita si está cargando
                         style: FilledButton.styleFrom(
-                          backgroundColor: Color(0xFF2C69F0),
+                          backgroundColor: const Color(0xFF2C69F0),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          padding: EdgeInsets.symmetric(vertical: 15),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
                         ),
-                        child: Text(
+                        child: _isLoading
+                            ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
+                        )
+                            : Text(
                           _isLogin ? "Iniciar sesión" : "Registrarse",
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
@@ -187,7 +276,7 @@ class _LoginState extends State<Login> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 10),
+                    const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -204,7 +293,7 @@ class _LoginState extends State<Login> {
                           },
                           child: Text(
                             _isLogin ? "Regístrate" : "Inicia sesión",
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Color(0xFF2C69F0),
                               fontWeight: FontWeight.bold,
                             ),
