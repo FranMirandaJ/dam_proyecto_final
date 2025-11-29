@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
+import 'package:proyecto_final/providers/user_provider.dart';
 
 class Auth {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -26,8 +29,10 @@ class Auth {
     final String uid = userCredential.user!.uid;
 
     // Paso 3: Buscar el documento del usuario en Firestore
-    final DocumentSnapshot doc =
-    await _firestore.collection('usuario').doc(uid).get();
+    final DocumentSnapshot doc = await _firestore
+        .collection('usuario')
+        .doc(uid)
+        .get();
 
     // Paso 4: Comprobar si el documento existe y devolver sus datos
     if (doc.exists) {
@@ -37,7 +42,9 @@ class Auth {
     } else {
       // Este caso es poco probable si el registro siempre crea un documento,
       // pero es una buena práctica manejarlo.
-      throw Exception("No se encontraron datos de usuario en la base de datos.");
+      throw Exception(
+        "No se encontraron datos de usuario en la base de datos.",
+      );
     }
   }
 
@@ -72,8 +79,10 @@ class Auth {
   // Obtener el rol del usuario desde Firestore
   Future<String?> getUserRole(String uid) async {
     try {
-      DocumentSnapshot doc =
-      await _firestore.collection('usuario').doc(uid).get();
+      DocumentSnapshot doc = await _firestore
+          .collection('usuario')
+          .doc(uid)
+          .get();
       if (doc.exists) {
         // Corregido de 'role' a 'rol' para coincidir con la base de datos
         return doc.get('rol');
@@ -85,7 +94,10 @@ class Auth {
   }
 
   // Cerrar sesión
-  Future<void> signOut() async {
+  Future<void> signOut(BuildContext context) async {
+    // Limpiamos el UserProvider
+    Provider.of<UserProvider>(context, listen: false).clearUser();
+    // Cerramos la sesión en Firebase
     await _auth.signOut();
   }
 }

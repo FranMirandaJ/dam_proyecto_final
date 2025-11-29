@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:proyecto_final/providers/user_provider.dart';
 import 'package:proyecto_final/services/auth.dart';
 import 'package:proyecto_final/screens/students/home_alumno.dart';
 import 'package:proyecto_final/screens/teachers/home_docente.dart';
@@ -38,6 +40,10 @@ class _LoginRegisterState extends State<LoginRegister> {
           email: userController.text,
           password: passwordController.text,
         );
+
+        if (mounted) {
+          Provider.of<UserProvider>(context, listen: false).setUser(userData);
+        }
 
         // ============= DATOS DEL USUARIO LOGEADO ==============
         String rol = userData['rol'];
