@@ -2,14 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:proyecto_final/screens/students/dashboard_alumno.dart';
 import 'package:proyecto_final/screens/students/notificaciones_alumno.dart';
 import 'package:proyecto_final/screens/students/scanear_qr.dart';
+import 'package:proyecto_final/screens/students/mapa.dart';
 
 // PLACEHOLDERS
-class MapPlaceholder extends StatelessWidget {
-  const MapPlaceholder({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) => const Center(child: Text("Mapa GPS (U5)"));
-}
-
 class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({Key? key}) : super(key: key);
 
@@ -25,7 +20,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   // Importante: El índice 2 es un "hueco" para el botón central, por eso ponemos un Container vacío.
   late final List<Widget> _screens = [
     StudentDashboardScreen(),      // Índice 0
-    MapPlaceholder(),              // Índice 1
+    Mapa(),              // Índice 1
     StudentNotificationScreen(),    // Índice 2
   ];
 
