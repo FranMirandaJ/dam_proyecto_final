@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyecto_final/services/auth.dart';
+import 'package:proyecto_final/screens/students/home_alumno.dart';
+import 'package:proyecto_final/screens/teachers/home_docente.dart';
 
 class LoginRegister extends StatefulWidget {
   const LoginRegister({super.key});
@@ -34,29 +36,30 @@ class _LoginRegisterState extends State<LoginRegister> {
           email: userController.text,
           password: passwordController.text,
         );
+
+        // ============= DATOS DEL USUARIO LOGEADO ==============
         String rol = userData['rol'];
         String nombre = userData['nombre'];
         String email = userData['email'];
         String uid = userData['uid'];
+        // =======================================================
 
         if (rol == 'alumno') {
-          /*Navigator.pushReplacement(
+          Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
-          );*/
+          );
           print("rol de alumno");
         } else if (rol == 'docente') {
-          /*Navigator.pushReplacement(
+          Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const TeacherHomeScreen()),
-          );*/
+          );
           print("rol de docente");
         } else {
           print("rol de admin");
         }
-        print(nombre);
-        print(email);
-        print(uid);
+
       } else {
         await _auth.createUserWithEmailAndPassword(
           email: userController.text,
