@@ -18,6 +18,7 @@ class _LoginRegisterState extends State<LoginRegister> {
   final Auth _auth = Auth();
 
   bool _isLogin = true;
+  bool _isLoading = false;
   bool _isPasswordVisible = false;
   String? _errorMessage;
 
@@ -25,6 +26,7 @@ class _LoginRegisterState extends State<LoginRegister> {
     // Clear previous error messages
     setState(() {
       _errorMessage = null;
+      _isLoading = true;
     });
 
     // Hide keyboard
@@ -59,7 +61,6 @@ class _LoginRegisterState extends State<LoginRegister> {
         } else {
           print("rol de admin");
         }
-
       } else {
         await _auth.createUserWithEmailAndPassword(
           email: userController.text,
@@ -93,6 +94,12 @@ class _LoginRegisterState extends State<LoginRegister> {
       setState(() {
         _errorMessage = e.message;
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -236,9 +243,7 @@ class _LoginRegisterState extends State<LoginRegister> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: () {
-                          handlerSubmit();
-                        },
+                        onPressed: _isLoading ? null : handlerSubmit, // Deshabilita si está cargando
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF2C69F0),
                           shape: RoundedRectangleBorder(
@@ -246,7 +251,16 @@ class _LoginRegisterState extends State<LoginRegister> {
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 15),
                         ),
-                        child: Text(
+                        child: _isLoading
+                            ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
+                        )
+                            : Text(
                           _isLogin ? "Iniciar sesión" : "Registrarse",
                           style: const TextStyle(
                             color: Colors.white,
