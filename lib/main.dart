@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:proyecto_final/Login.dart';
+import 'package:proyecto_final/screens/LoginRegister.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-void main() {
-  runApp(MaterialApp(
-    home: Login(),
-    debugShowCheckedModeBanner: false,
-  ));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(MaterialApp(home: Login(), debugShowCheckedModeBanner: false));
 }
 
 class MyApp extends StatelessWidget {
