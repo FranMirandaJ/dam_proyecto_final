@@ -5,7 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(MaterialApp(home: Login(), debugShowCheckedModeBanner: false));
+  runApp(MaterialApp(home: LoginRegister(), debugShowCheckedModeBanner: false));
 }
 
 class MyApp extends StatelessWidget {
