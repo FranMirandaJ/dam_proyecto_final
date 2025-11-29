@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:proyecto_final/screens/LoginRegister.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:proyecto_final/screens/students/home_alumno.dart';
+import 'package:proyecto_final/screens/teachers/home_docente.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(MaterialApp(home: Login(), debugShowCheckedModeBanner: false));
+  runApp(MaterialApp(home: StudentHomeScreen(), debugShowCheckedModeBanner: false));
 }
 
 class MyApp extends StatelessWidget {
