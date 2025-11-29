@@ -31,7 +31,9 @@ class Auth {
 
     // Paso 4: Comprobar si el documento existe y devolver sus datos
     if (doc.exists) {
-      return doc.data() as Map<String, dynamic>;
+      final userData = doc.data() as Map<String, dynamic>;
+      userData['uid'] = uid;
+      return userData;
     } else {
       // Este caso es poco probable si el registro siempre crea un documento,
       // pero es una buena práctica manejarlo.

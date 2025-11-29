@@ -37,13 +37,14 @@ class _LoginRegisterState extends State<LoginRegister> {
         String rol = userData['rol'];
         String nombre = userData['nombre'];
         String email = userData['email'];
+        String uid = userData['uid'];
 
         if (rol == 'alumno') {
           /*Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
           );*/
-          print("rol de alumn");
+          print("rol de alumno");
         } else if (rol == 'docente') {
           /*Navigator.pushReplacement(
             context,
@@ -55,6 +56,7 @@ class _LoginRegisterState extends State<LoginRegister> {
         }
         print(nombre);
         print(email);
+        print(uid);
       } else {
         await _auth.createUserWithEmailAndPassword(
           email: userController.text,
