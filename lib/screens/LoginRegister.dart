@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:proyecto_final/services/auth.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -10,36 +12,35 @@ class Login extends StatefulWidget {
 class _LoginState extends State<Login> {
   final userController = TextEditingController();
   final passwordController = TextEditingController();
+  final Auth _auth = Auth();
 
-  final USER = "admin";
-  final PASSWORD = "admin";
-
-  bool _isLogin =
-      true; // indica si estamos en el formulario de inicio de sesión o registro
+  bool _isLogin = true;
   bool _isPasswordVisible = false;
+  String? _errorMessage;
 
-  void handlerSubmit() {
-    if (_isLogin) {
-      // Lógica de inicio de sesión
-      if (userController.text == USER && passwordController.text == PASSWORD) {
-        print("Todo bien");
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.red),
-                SizedBox(width: 10),
-                Text("Credenciales incorrectas."),
-              ],
-            ),
-            duration: Duration(seconds: 2),
-          ),
+  void handlerSubmit() async {
+    setState(() {
+      _errorMessage = null;
+    });
+
+    try {
+      if (_isLogin) {
+        await _auth.signInWithEmailAndPassword(
+          email: userController.text,
+          password: passwordController.text,
         );
+        // El stream en main.dart se encargará de la navegación
+      } else {
+        await _auth.createUserWithEmailAndPassword(
+          email: userController.text,
+          password: passwordController.text,
+        );
+        // El stream en main.dart se encargará de la navegación
       }
-    } else {
-      // Lógica de registro (puedes ampliarla aquí)
-      print("Registrando nuevo usuario...");
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = e.message;
+      });
     }
   }
 
@@ -50,7 +51,7 @@ class _LoginState extends State<Login> {
         width: double.infinity,
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF2C69F0), Color(0xff49a09d)], // Cambiado el color principal
+            colors: [Color(0xFF2C69F0), Color(0xff49a09d)],
             stops: [0, 1],
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
@@ -153,6 +154,15 @@ class _LoginState extends State<Login> {
                       ),
                       controller: passwordController,
                     ),
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10.0),
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     SizedBox(height: 30),
                     SizedBox(
                       width: double.infinity,
@@ -161,7 +171,7 @@ class _LoginState extends State<Login> {
                           handlerSubmit();
                         },
                         style: FilledButton.styleFrom(
-                          backgroundColor: Color(0xFF2C69F0), // Cambiado el color del botón
+                          backgroundColor: Color(0xFF2C69F0),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -195,7 +205,7 @@ class _LoginState extends State<Login> {
                           child: Text(
                             _isLogin ? "Regístrate" : "Inicia sesión",
                             style: TextStyle(
-                              color: Color(0xFF2C69F0), // Cambiado el color del texto del botón
+                              color: Color(0xFF2C69F0),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
