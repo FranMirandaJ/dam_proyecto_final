@@ -63,7 +63,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
     setState(() => isLoadingAlumnos = true);
 
     try {
-      // Usamos la nueva función que te di anteriormente que cruza datos
       final resultado = await DocenteQueries.obtenerAsistenciaPorFecha(
         selectedMateriaId!,
         selectedDate!,
@@ -80,10 +79,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
     }
   }
 
-  /// -----------------------------------------------------------
-  /// LÓGICA DE VALIDACIÓN (ACTUALIZADA: BLOQUEO FUTURO)
-  /// -----------------------------------------------------------
-
   DateTime _normalizeDate(DateTime date) {
     return DateTime(date.year, date.month, date.day);
   }
@@ -92,7 +87,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
     final diaNormalizado = _normalizeDate(day);
     final hoyNormalizado = _normalizeDate(DateTime.now());
 
-    // 1. NUEVA VALIDACIÓN: Si el día es posterior a hoy, NO es seleccionable
     if (diaNormalizado.isAfter(hoyNormalizado)) {
       return false;
     }
@@ -102,11 +96,8 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
       final fin = _normalizeDate(clase['periodoFin'] as DateTime);
       final diasClase = clase['diasClase'] as List<int>;
 
-      // 2. Validar rango del periodo escolar
       bool enRango =
           !diaNormalizado.isBefore(inicio) && !diaNormalizado.isAfter(fin);
-
-      // 3. Validar día de la semana (Lunes, Martes...)
       bool esDiaCorrecto = diasClase.contains(diaNormalizado.weekday);
 
       return enRango && esDiaCorrecto;
@@ -115,18 +106,12 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
 
   DateTime? _obtenerFechaInicialValida() {
     if (clasesConPeriodo.isEmpty) return null;
-
     final today = _normalizeDate(DateTime.now());
-
-    // 1. Si hoy es válido, retornar hoy.
     if (_esDiaSeleccionable(today)) return today;
-
-    // 2. Buscar SOLO hacia atrás (ya que el futuro está prohibido)
     for (int i = 1; i <= 60; i++) {
       final prevDate = today.subtract(Duration(days: i));
       if (_esDiaSeleccionable(prevDate)) return prevDate;
     }
-
     return null;
   }
 
@@ -139,6 +124,16 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
           ),
         )
         .toList();
+
+    // --- CÁLCULOS ---
+    final int total = listaAlumnos.length;
+    final int presentes = listaAlumnos
+        .where((a) => a['asistio'] == true)
+        .length;
+    final int faltas = total - presentes;
+    final String porcentaje = total == 0
+        ? "0%"
+        : "${((presentes / total) * 100).toStringAsFixed(0)}%";
 
     return Scaffold(
       backgroundColor: Color(0xfff7f8fa),
@@ -156,8 +151,9 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
           ? Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // 1. CONFIGURACIÓN DE BÚSQUEDA (FECHA Y MATERIA)
                 Container(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
                   color: Color(0xfff7f8fa),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,11 +167,10 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                       ),
                       SizedBox(height: 12),
 
-                      // --- SELECTOR DE FECHA ---
+                      // SELECTOR DE FECHA
                       GestureDetector(
                         onTap: () async {
                           final safeInitialDate = _obtenerFechaInicialValida();
-
                           if (safeInitialDate == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -186,13 +181,9 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                             );
                             return;
                           }
-
-                          // Calcular el primer día posible (inicio de semestre)
                           final firstDate = clasesConPeriodo
                               .map((c) => c['periodoInicio'] as DateTime)
                               .reduce((a, b) => a.isBefore(b) ? a : b);
-
-                          // NUEVO: El último día posible es HOY. No dejamos pasar de hoy.
                           final lastDate = DateTime.now();
 
                           final date = await showDatePicker(
@@ -200,7 +191,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                             initialDate: safeInitialDate,
                             firstDate: firstDate,
                             lastDate: lastDate,
-                            // <--- ESTO BLOQUEA EL FUTURO EN EL CALENDARIO
                             selectableDayPredicate: _esDiaSeleccionable,
                           );
 
@@ -209,8 +199,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                               selectedDate = date;
                               selectedMateriaId = null;
                               listaAlumnos = [];
-
-                              // Filtrar materias del día
                               clasesDelDia = clasesConPeriodo.where((clase) {
                                 final inicio = _normalizeDate(
                                   clase['periodoInicio'],
@@ -218,7 +206,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                                 final fin = _normalizeDate(clase['periodoFin']);
                                 final dias = clase['diasClase'] as List<int>;
                                 final dateNorm = _normalizeDate(date);
-
                                 bool enPeriodo =
                                     !dateNorm.isBefore(inicio) &&
                                     !dateNorm.isAfter(fin);
@@ -237,10 +224,9 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                                 ).format(selectedDate!),
                         ),
                       ),
-
                       SizedBox(height: 12),
 
-                      // --- DROPDOWN MATERIAS ---
+                      // DROPDOWN MATERIAS
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 12,
@@ -273,45 +259,81 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                           ),
                         ),
                       ),
-
-                      SizedBox(height: 20),
-
-                      // --- BUSCADOR ---
-                      if (listaAlumnos.isNotEmpty ||
-                          searchController.text.isNotEmpty) ...[
-                        Text(
-                          "Lista de asistencia",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Container(
-                          decoration: _boxDecoration(),
-                          child: TextField(
-                            controller: searchController,
-                            onChanged: (v) => setState(() {}),
-                            decoration: InputDecoration(
-                              hintText: "Buscar por nombre...",
-                              prefixIcon: Icon(
-                                Icons.search,
-                                color: Colors.grey,
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
-                                vertical: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      SizedBox(height: 10),
                     ],
                   ),
                 ),
 
-                // --- LISTA RESULTADOS ---
+                // SOLO MOSTRAMOS LO DEMÁS SI HAY DATOS CARGADOS
+                if (listaAlumnos.isNotEmpty) ...[
+                  // 2. ESTADÍSTICAS (Cuadros de conteo)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Row(
+                      children: [
+                        _statCard(
+                          presentes.toString(),
+                          "Asistieron",
+                          Color(0xFFE8F5E9),
+                          Color(0xFF2E7D32),
+                        ),
+                        SizedBox(width: 12),
+                        _statCard(
+                          faltas.toString(),
+                          "Faltas",
+                          Color(0xFFFFEBEE),
+                          Color(0xFFC62828),
+                        ),
+                        SizedBox(width: 12),
+                        _statCard(
+                          porcentaje,
+                          "Asistencia",
+                          Color(0xFFE3F2FD),
+                          Color(0xFF1565C0),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(height: 20),
+
+                  // 3. SUBTÍTULO "Lista de asistencia"
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Lista de asistencia",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  SizedBox(height: 10),
+
+                  // 4. BARRA DE BÚSQUEDA
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Container(
+                      decoration: _boxDecoration(),
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: (v) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: "Buscar por nombre...",
+                          prefixIcon: Icon(Icons.search, color: Colors.grey),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                ],
+
+                // 5. LISTA DE ALUMNOS (Expanded para ocupar el resto)
                 Expanded(
                   child: isLoadingAlumnos
                       ? Center(child: CircularProgressIndicator())
@@ -383,12 +405,43 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
         ),
       );
 
+  Widget _statCard(String value, String label, Color bgColor, Color textColor) {
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _alumnoCard(Map<String, dynamic> alumno) {
-    // Solo recuperamos el nombre
     final String nombre = alumno['nombre']?.toString() ?? "Sin Nombre";
     final bool asistio = alumno['asistio'] == true;
 
-    // Manejo de la hora
     String horaTexto = "--:--";
     if (asistio && alumno['horaRegistro'] != null) {
       try {
@@ -398,7 +451,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
       }
     }
 
-    // Colores y textos
     final Color estadoColor = asistio ? Colors.green : Colors.red;
     final Color bgIconColor = asistio
         ? Colors.green.withOpacity(0.1)
@@ -423,7 +475,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
       ),
       child: Row(
         children: [
-          // 1. Avatar
           CircleAvatar(
             backgroundColor: Colors.blue.shade50,
             child: Text(
@@ -432,21 +483,15 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
             ),
           ),
           SizedBox(width: 12),
-
-          // 2. Nombre (Ahora es solo un Text dentro del Expanded, sin Column)
           Expanded(
             child: Text(
               nombre,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
-              // Corta con '...' si es muy largo
               maxLines: 2,
             ),
           ),
-
           SizedBox(width: 8),
-
-          // 3. Estado (Asistió/Falta) y Hora
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
