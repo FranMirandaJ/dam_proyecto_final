@@ -5,8 +5,8 @@ class DocenteQueries {
 
   /// Obtiene todas las clases del docente y adjunta las fechas de su periodo.
   static Future<List<Map<String, dynamic>>> obtenerClasesConPeriodos(
-    String docenteUid,
-  ) async {
+      String docenteUid,
+      ) async {
     try {
       DocumentReference docRef = _db.collection('usuario').doc(docenteUid);
 
@@ -20,8 +20,8 @@ class DocenteQueries {
 
       // 2. Procesar en paralelo para buscar los Periodos
       List<Future<Map<String, dynamic>>> futuros = querySnapshot.docs.map((
-        doc,
-      ) async {
+          doc,
+          ) async {
         final data = doc.data();
 
         // Fechas por defecto (seguridad)
@@ -59,69 +59,98 @@ class DocenteQueries {
     }
   }
 
+  /// Obtiene la lista COMPLETA de alumnos (asistentes y faltistas)
   static Future<List<Map<String, dynamic>>> obtenerAsistenciaPorFecha(
-    String claseIdPath,
-    DateTime fecha,
-  ) async {
+      String claseIdPath,
+      DateTime fecha,
+      ) async {
     try {
-      // 1. Definir rango del día exacto
+      // 1. Definir rango del día exacto para buscar asistencias
       final start = DateTime(fecha.year, fecha.month, fecha.day);
       final end = DateTime(fecha.year, fecha.month, fecha.day, 23, 59, 59);
 
-      // Convertimos el string path (ej: "clase/ABC...") a DocumentReference
       final DocumentReference claseRef = _db.doc(claseIdPath);
 
-      // 2. Traer las fichas de asistencia
-      final querySnapshot = await _db
-          .collection('asistencia')
-          .where('claseId', isEqualTo: claseRef)
-          .where('fecha', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('fecha', isLessThanOrEqualTo: Timestamp.fromDate(end))
-          .get();
+      // 2. Ejecutar DOS consultas en paralelo:
+      //    A. Obtener la lista completa de inscritos (desde la colección 'clase')
+      //    B. Obtener los registros de asistencia de hoy
+      final results = await Future.wait([
+        claseRef.get(), // Index 0: Datos de la clase
+        _db
+            .collection('asistencia')
+            .where('claseId', isEqualTo: claseRef)
+            .where('fecha', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+            .where('fecha', isLessThanOrEqualTo: Timestamp.fromDate(end))
+            .get(), // Index 1: Asistencias registradas
+      ]);
 
-      if (querySnapshot.docs.isEmpty) return [];
+      // --- PROCESAR LISTA OFICIAL DE INSCRITOS ---
+      final claseDoc = results[0] as DocumentSnapshot;
+      if (!claseDoc.exists) return [];
+      final dataClase = claseDoc.data() as Map<String, dynamic>;
+      // Obtenemos el array de referencias a usuarios
+      final List<dynamic> refsAlumnos = dataClase['alumnos'] ?? [];
 
-      // 3. Procesar cada asistencia para buscar el NOMBRE del alumno
-      // Usamos Future.wait para hacer todas las consultas de nombre en paralelo
-      List<Future<Map<String, dynamic>>>
-      futurosAlumnos = querySnapshot.docs.map((doc) async {
-        final data = doc.data();
+      // --- PROCESAR ASISTENCIAS REGISTRADAS ---
+      final asistenciaQuery = results[1] as QuerySnapshot;
+      final Set<String> idsAsistieron = {}; // Usamos un Set para búsqueda rápida
+      final Map<String, DateTime> horasLlegada = {};
 
-        String nombreAlumno = "Desconocido";
-        String matricula = "---";
+      for (var doc in asistenciaQuery.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['alumnoId'] is DocumentReference) {
+          final String uid = (data['alumnoId'] as DocumentReference).id;
+          idsAsistieron.add(uid);
+          if (data['fecha'] != null) {
+            horasLlegada[uid] = (data['fecha'] as Timestamp).toDate();
+          }
+        }
+      }
 
-        // Verificamos si hay una referencia al alumno
-        if (data['alumnoId'] != null && data['alumnoId'] is DocumentReference) {
-          DocumentReference alumnoRef = data['alumnoId'];
+      // 3. Cruzar la información: Recorremos TODOS los alumnos inscritos
+      List<Future<Map<String, dynamic>>> futurosAlumnos = refsAlumnos.map((ref) async {
+        if (ref is! DocumentReference) return <String, dynamic>{};
 
-          // --- CONSULTA EXTRA: Leer datos del usuario ---
-          final alumnoSnap = await alumnoRef.get();
+        final String uidAlumno = ref.id;
+        final bool asistio = idsAsistieron.contains(uidAlumno);
 
-          if (alumnoSnap.exists) {
-            final alumnoData = alumnoSnap.data() as Map<String, dynamic>;
-            nombreAlumno = alumnoData['nombre'] ?? "Sin Nombre";
+        // Traer nombre del alumno desde la colección 'usuario'
+        String nombre = "Cargando...";
+        String matricula = uidAlumno;
 
-            // Usamos el ID del documento usuario como matrícula (común en estos sistemas)
-            matricula = alumnoRef.id;
-            if (matricula.length > 8)
-              matricula = matricula.substring(0, 8).toUpperCase();
+        final alumnoSnap = await ref.get();
+        if (alumnoSnap.exists) {
+          final aData = alumnoSnap.data() as Map<String, dynamic>;
+          nombre = aData['nombre'] ?? "Sin nombre";
+
+          // Lógica de matrícula: campo explícito o ID recortado
+          if (aData['matricula'] != null) {
+            matricula = aData['matricula'];
+          } else {
+            matricula = uidAlumno.length > 5 ? uidAlumno.substring(0, 5).toUpperCase() : uidAlumno;
           }
         }
 
         return {
-          'id': doc.id,
-          'nombre': nombreAlumno,
-          // Ahora sí tenemos el nombre real
+          'id': uidAlumno,
+          'nombre': nombre,
           'matricula': matricula,
-          'asistio': true,
-          'horaRegistro': (data['fecha'] as Timestamp).toDate(),
-          // Dato extra útil
+          'asistio': asistio, // TRUE si está en asistencia, FALSE si no
+          'horaRegistro': asistio ? horasLlegada[uidAlumno] : null,
         };
       }).toList();
 
-      return await Future.wait(futurosAlumnos);
+      // Esperar a que se completen todas las mini-consultas de nombres
+      final todos = await Future.wait(futurosAlumnos);
+
+      // Filtrar vacíos (por si hubo refs inválidas) y ordenar alfabéticamente
+      final listaFinal = todos.where((element) => element.isNotEmpty).toList();
+      listaFinal.sort((a, b) => a['nombre'].toString().compareTo(b['nombre'].toString()));
+
+      return listaFinal;
+
     } catch (e) {
-      print("Error obteniendo asistencia: $e");
+      print("Error obteniendo lista completa: $e");
       return [];
     }
   }

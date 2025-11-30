@@ -301,7 +301,7 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                       if (listaAlumnos.isNotEmpty ||
                           searchController.text.isNotEmpty) ...[
                         Text(
-                          "Alumnos asistidos (${alumnosRender.length})",
+                          "Lista de asistencia",
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -392,67 +392,117 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
         ),
       );
 
-  Widget _alumnoCard(Map<String, dynamic> alumno) => Container(
-    margin: EdgeInsets.only(bottom: 10),
-    padding: EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.grey.shade200),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.blue.shade50,
-              child: Text(
-                alumno['nombre'].isNotEmpty ? alumno['nombre'][0] : "?",
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                ),
+  Widget _alumnoCard(Map<String, dynamic> alumno) {
+    final bool asistio = alumno['asistio'] == true;
+
+    // Formato de hora (solo si asistió)
+    String horaTexto = "--:--";
+    if (asistio && alumno['horaRegistro'] != null) {
+      horaTexto = DateFormat('hh:mm a').format(alumno['horaRegistro']);
+    }
+
+    // Colores dinámicos
+    final Color estadoColor = asistio ? Colors.green : Colors.red;
+    final Color bgIconColor = asistio
+        ? Colors.green.withOpacity(0.1)
+        : Colors.red.withOpacity(0.1);
+    final IconData iconEstado = asistio ? Icons.check_circle : Icons.cancel;
+    final String textoEstado = asistio ? "Asistió" : "Falta";
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        // Borde izquierdo de color para identificar rápido
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Avatar
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: Colors.grey.shade100,
+            child: Text(
+              alumno['nombre'].isNotEmpty ? alumno['nombre'][0] : "?",
+              style: TextStyle(
+                color: asistio ? Colors.blue : Colors.grey, // Gris si faltó
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
               ),
             ),
-            SizedBox(width: 12),
-            Column(
+          ),
+          SizedBox(width: 12),
+
+          // Datos del Alumno
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   alumno['nombre'],
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: asistio
+                        ? Colors.black
+                        : Colors.grey.shade600, // Texto mas suave si faltó
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
+                SizedBox(height: 4),
                 Text(
-                  "Matrícula: ${alumno['matricula']}",
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                  "${alumno['matricula']}",
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                 ),
               ],
             ),
-          ],
-        ),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
           ),
-          child: Row(
+
+          // Indicador de Estado (Derecha)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 16),
-              SizedBox(width: 4),
-              Text(
-                "Asistió",
-                style: TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: bgIconColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(iconEstado, color: estadoColor, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      textoEstado,
+                      style: TextStyle(
+                        color: estadoColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              if (asistio) ...[
+                SizedBox(height: 4),
+                Text(
+                  horaTexto,
+                  style: TextStyle(color: Colors.grey, fontSize: 10),
+                ),
+              ],
             ],
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
