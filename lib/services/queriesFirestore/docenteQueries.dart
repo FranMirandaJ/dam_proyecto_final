@@ -116,25 +116,16 @@ class DocenteQueries {
 
         // Traer nombre del alumno desde la colección 'usuario'
         String nombre = "Cargando...";
-        String matricula = uidAlumno;
 
         final alumnoSnap = await ref.get();
         if (alumnoSnap.exists) {
           final aData = alumnoSnap.data() as Map<String, dynamic>;
           nombre = aData['nombre'] ?? "Sin nombre";
-
-          // Lógica de matrícula: campo explícito o ID recortado
-          if (aData['matricula'] != null) {
-            matricula = aData['matricula'];
-          } else {
-            matricula = uidAlumno.length > 5 ? uidAlumno.substring(0, 5).toUpperCase() : uidAlumno;
-          }
         }
 
         return {
           'id': uidAlumno,
           'nombre': nombre,
-          'matricula': matricula,
           'asistio': asistio, // TRUE si está en asistencia, FALSE si no
           'horaRegistro': asistio ? horasLlegada[uidAlumno] : null,
         };

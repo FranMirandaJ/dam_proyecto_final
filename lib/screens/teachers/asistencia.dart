@@ -25,11 +25,7 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
   @override
   void initState() {
     super.initState();
-
-    // --- AGREGA ESTA LÍNEA ---
-    // Esto carga los formatos de fecha para español ('es')
-    initializeDateFormatting('es', null).then((_) {
-      // Una vez cargado el idioma, cargamos los datos de Firebase
+    initializeDateFormatting(null, null).then((_) {
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _cargarDatosIniciales();
@@ -67,6 +63,7 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
     setState(() => isLoadingAlumnos = true);
 
     try {
+      // Usamos la nueva función que te di anteriormente que cruza datos
       final resultado = await DocenteQueries.obtenerAsistenciaPorFecha(
         selectedMateriaId!,
         selectedDate!,
@@ -84,35 +81,38 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
   }
 
   /// -----------------------------------------------------------
-  /// LÓGICA DE VALIDACIÓN (CORREGIDA)
+  /// LÓGICA DE VALIDACIÓN (ACTUALIZADA: BLOQUEO FUTURO)
   /// -----------------------------------------------------------
 
-  /// Normaliza una fecha para quitarle la hora (00:00:00)
   DateTime _normalizeDate(DateTime date) {
     return DateTime(date.year, date.month, date.day);
   }
 
   bool _esDiaSeleccionable(DateTime day) {
     final diaNormalizado = _normalizeDate(day);
+    final hoyNormalizado = _normalizeDate(DateTime.now());
+
+    // 1. NUEVA VALIDACIÓN: Si el día es posterior a hoy, NO es seleccionable
+    if (diaNormalizado.isAfter(hoyNormalizado)) {
+      return false;
+    }
 
     return clasesConPeriodo.any((clase) {
       final inicio = _normalizeDate(clase['periodoInicio'] as DateTime);
       final fin = _normalizeDate(clase['periodoFin'] as DateTime);
       final diasClase = clase['diasClase'] as List<int>;
 
-      // 1. Validar rango
+      // 2. Validar rango del periodo escolar
       bool enRango =
           !diaNormalizado.isBefore(inicio) && !diaNormalizado.isAfter(fin);
 
-      // 2. Validar día de la semana
+      // 3. Validar día de la semana (Lunes, Martes...)
       bool esDiaCorrecto = diasClase.contains(diaNormalizado.weekday);
 
       return enRango && esDiaCorrecto;
     });
   }
 
-  /// Busca una fecha inicial válida. Si "hoy" no es válido (ej. Domingo),
-  /// busca el día de clase más cercano hacia atrás o adelante.
   DateTime? _obtenerFechaInicialValida() {
     if (clasesConPeriodo.isEmpty) return null;
 
@@ -121,28 +121,10 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
     // 1. Si hoy es válido, retornar hoy.
     if (_esDiaSeleccionable(today)) return today;
 
-    // 2. Si hoy no es válido, buscar hacia atrás (últimos 30 días)
-    // Es más probable que el profesor quiera ver una clase que acaba de pasar.
+    // 2. Buscar SOLO hacia atrás (ya que el futuro está prohibido)
     for (int i = 1; i <= 60; i++) {
       final prevDate = today.subtract(Duration(days: i));
       if (_esDiaSeleccionable(prevDate)) return prevDate;
-    }
-
-    // 3. Si no hay clases pasadas recientes, buscar hacia adelante
-    for (int i = 1; i <= 60; i++) {
-      final nextDate = today.add(Duration(days: i));
-      if (_esDiaSeleccionable(nextDate)) return nextDate;
-    }
-
-    // 4. Si nada funciona, devolver el primer día válido del primer periodo
-    // (Caso extremo: vacaciones largas)
-    for (var clase in clasesConPeriodo) {
-      final inicio = _normalizeDate(clase['periodoInicio']);
-      // Probar los primeros 7 días de ese periodo
-      for (int i = 0; i < 7; i++) {
-        final d = inicio.add(Duration(days: i));
-        if (_esDiaSeleccionable(d)) return d;
-      }
     }
 
     return null;
@@ -192,35 +174,33 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                       // --- SELECTOR DE FECHA ---
                       GestureDetector(
                         onTap: () async {
-                          // Calcular la fecha inicial segura
                           final safeInitialDate = _obtenerFechaInicialValida();
 
                           if (safeInitialDate == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  "No hay días de clase disponibles en los periodos actuales.",
+                                  "No hay clases pasadas registradas.",
                                 ),
                               ),
                             );
                             return;
                           }
 
-                          // Calcular rangos absolutos para el calendario
+                          // Calcular el primer día posible (inicio de semestre)
                           final firstDate = clasesConPeriodo
                               .map((c) => c['periodoInicio'] as DateTime)
                               .reduce((a, b) => a.isBefore(b) ? a : b);
-                          final lastDate = clasesConPeriodo
-                              .map((c) => c['periodoFin'] as DateTime)
-                              .reduce((a, b) => a.isAfter(b) ? a : b);
 
-                          // Abrir el calendario
+                          // NUEVO: El último día posible es HOY. No dejamos pasar de hoy.
+                          final lastDate = DateTime.now();
+
                           final date = await showDatePicker(
                             context: context,
                             initialDate: safeInitialDate,
-                            // <--- AQUÍ ESTABA EL ERROR, AHORA ES SEGURO
                             firstDate: firstDate,
                             lastDate: lastDate,
+                            // <--- ESTO BLOQUEA EL FUTURO EN EL CALENDARIO
                             selectableDayPredicate: _esDiaSeleccionable,
                           );
 
@@ -254,7 +234,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                               ? "Seleccionar fecha"
                               : DateFormat(
                                   "dd 'de' MMMM, yyyy",
-                                  "es",
                                 ).format(selectedDate!),
                         ),
                       ),
@@ -338,15 +317,27 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                       ? Center(child: CircularProgressIndicator())
                       : selectedMateriaId == null
                       ? Center(
-                          child: Text(
-                            "Selecciona fecha y materia",
-                            style: TextStyle(color: Colors.grey),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.history,
+                                size: 50,
+                                color: Colors.grey.shade300,
+                              ),
+                              SizedBox(height: 10),
+                              Text(
+                                "Selecciona una fecha y materia\npara ver el historial",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ],
                           ),
                         )
                       : alumnosRender.isEmpty
                       ? Center(
                           child: Text(
-                            "No se encontraron registros",
+                            "No se encontraron alumnos inscritos",
                             style: TextStyle(color: Colors.grey),
                           ),
                         )
@@ -393,15 +384,21 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
       );
 
   Widget _alumnoCard(Map<String, dynamic> alumno) {
+    // Solo recuperamos el nombre
+    final String nombre = alumno['nombre']?.toString() ?? "Sin Nombre";
     final bool asistio = alumno['asistio'] == true;
 
-    // Formato de hora (solo si asistió)
+    // Manejo de la hora
     String horaTexto = "--:--";
     if (asistio && alumno['horaRegistro'] != null) {
-      horaTexto = DateFormat('hh:mm a').format(alumno['horaRegistro']);
+      try {
+        horaTexto = DateFormat('hh:mm a').format(alumno['horaRegistro']);
+      } catch (e) {
+        horaTexto = "--:--";
+      }
     }
 
-    // Colores dinámicos
+    // Colores y textos
     final Color estadoColor = asistio ? Colors.green : Colors.red;
     final Color bgIconColor = asistio
         ? Colors.green.withOpacity(0.1)
@@ -416,7 +413,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade200),
-        // Borde izquierdo de color para identificar rápido
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -427,59 +423,42 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
       ),
       child: Row(
         children: [
-          // Avatar
+          // 1. Avatar
           CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.grey.shade100,
+            backgroundColor: Colors.blue.shade50,
             child: Text(
-              alumno['nombre'].isNotEmpty ? alumno['nombre'][0] : "?",
-              style: TextStyle(
-                color: asistio ? Colors.blue : Colors.grey, // Gris si faltó
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
+              nombre.isNotEmpty ? nombre[0].toUpperCase() : "?",
+              style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
             ),
           ),
           SizedBox(width: 12),
 
-          // Datos del Alumno
+          // 2. Nombre (Ahora es solo un Text dentro del Expanded, sin Column)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  alumno['nombre'],
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: asistio
-                        ? Colors.black
-                        : Colors.grey.shade600, // Texto mas suave si faltó
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  "${alumno['matricula']}",
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                ),
-              ],
+            child: Text(
+              nombre,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+              // Corta con '...' si es muy largo
+              maxLines: 2,
             ),
           ),
 
-          // Indicador de Estado (Derecha)
+          SizedBox(width: 8),
+
+          // 3. Estado (Asistió/Falta) y Hora
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: bgIconColor,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    Icon(iconEstado, color: estadoColor, size: 14),
+                    Icon(iconEstado, color: estadoColor, size: 16),
                     SizedBox(width: 4),
                     Text(
                       textoEstado,
@@ -492,13 +471,14 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                   ],
                 ),
               ),
-              if (asistio) ...[
-                SizedBox(height: 4),
-                Text(
-                  horaTexto,
-                  style: TextStyle(color: Colors.grey, fontSize: 10),
+              if (asistio)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(
+                    horaTexto,
+                    style: TextStyle(fontSize: 10, color: Colors.grey),
+                  ),
                 ),
-              ],
             ],
           ),
         ],
