@@ -5,13 +5,7 @@ import 'package:proyecto_final/screens/teachers/dashboard_docente.dart';
 import 'package:proyecto_final/screens/teachers/generar_qr.dart';
 import 'package:proyecto_final/screens/teachers/notificaciones_docente.dart';
 import '../../providers/user_provider.dart';
-
-// Placeholder para Asistencia (puedes cambiarlo luego por tu pantalla real)
-class AttendancePlaceholder extends StatelessWidget {
-  const AttendancePlaceholder({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) => const Center(child: Text("Pantalla de Asistencia"));
-}
+import 'package:proyecto_final/screens/teachers/asistencia.dart';
 
 class TeacherHomeScreen extends StatefulWidget {
   const TeacherHomeScreen({Key? key}) : super(key: key);
@@ -30,7 +24,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
   late final List<Widget> _screens = [
     const TeacherDashboardScreen(),      // Índice 0
     Container(),                         // Índice 1 (QR - Controlado por función)
-    const AttendancePlaceholder(),       // Índice 2
+    AsistenciasPage(),       // Índice 2
     const TeacherNotificationScreen()    // Índice 3
   ];
 
