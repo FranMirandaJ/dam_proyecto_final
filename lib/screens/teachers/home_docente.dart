@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:proyecto_final/screens/teachers/dashboard_docente.dart';
 import 'package:proyecto_final/screens/teachers/generar_qr.dart';
 import 'package:proyecto_final/screens/teachers/notificaciones_docente.dart';
+import 'package:proyecto_final/screens/teachers/asistencia.dart';
 
 // PLACEHOLDERS
 class AttendancePlaceholder extends StatelessWidget {
@@ -26,7 +27,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
   late final List<Widget> _screens = [
     TeacherDashboardScreen(),      // Índice 0
     TeacherGenerateQRScreen(),              // Índice 1
-    AttendancePlaceholder(),  // Índice 2
+    AsistenciasPage(),  // Índice 2
     TeacherNotificationScreen()
   ];
 
