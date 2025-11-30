@@ -3,61 +3,67 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class EstudianteQueries {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Obtiene una lista de las aulas donde un estudiante específico tiene clase.
+  /// Obtiene la información completa de las clases de un estudiante (nombre, hora, aula y ubicación).
   ///
-  /// Devuelve una lista de mapas, donde cada mapa contiene el nombre,
-  /// la latitud y la longitud del aula.
-  static Future<List<Map<String, dynamic>>> getAulasDeEstudiante(String estudianteId) async {
+  /// Devuelve una lista de mapas, donde cada mapa contiene:
+  /// - 'nombreClase': El nombre de la materia.
+  /// - 'hora': La hora de la clase.
+  /// - 'nombreAula': El nombre del aula.
+  /// - 'latitud': La latitud del aula.
+  /// - 'longitud': La longitud del aula.
+  static Future<List<Map<String, dynamic>>> getClasesInfoParaEstudiante(String estudianteId) async {
     try {
-      // 1. Crea una referencia directa al documento del estudiante.
-      final DocumentReference estudianteRef = _firestore.collection('usuario').doc(estudianteId);
+      // 1. Crear una referencia directa al documento del estudiante
+      final estudianteRef = _firestore.collection('usuario').doc(estudianteId);
 
-      // 2. Busca en la colección 'clase' los documentos donde el array 'alumnos'
-      //    contenga la referencia del estudiante.
-      final QuerySnapshot clasesSnapshot = await _firestore
+      // 2. Buscar en la colección 'clase' donde el array 'alumnos' contenga la referencia del estudiante
+      final clasesSnapshot = await _firestore
           .collection('clase')
           .where('alumnos', arrayContains: estudianteRef)
           .get();
 
       if (clasesSnapshot.docs.isEmpty) {
-        // Si el estudiante no está inscrito en ninguna clase, devuelve una lista vacía.
-        return [];
+        return []; // El estudiante no tiene clases asignadas
       }
 
-      // 3. Extrae las referencias a las aulas, evitando duplicados.
-      final Set<DocumentReference> aulaRefs = {};
+      final List<Map<String, dynamic>> clasesInfo = [];
+
+      // 3. Procesar cada clase encontrada
       for (var doc in clasesSnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        if (data['aula'] is DocumentReference) {
-          aulaRefs.add(data['aula']);
-        }
-      }
+        final claseData = doc.data();
 
-      // 4. Obtiene los datos de cada aula única.
-      final List<Map<String, dynamic>> aulasConCoordenadas = [];
-      for (DocumentReference ref in aulaRefs) {
-        final DocumentSnapshot aulaDoc = await ref.get();
-        if (aulaDoc.exists) {
-          final aulaData = aulaDoc.data() as Map<String, dynamic>;
-          final GeoPoint? coordenadas = aulaData['coordenadas'];
-          final String? nombreAula = aulaData['aula'];
+        // Validar que los campos necesarios existan
+        if (claseData.containsKey('aula') &&
+            claseData['aula'] is DocumentReference &&
+            claseData.containsKey('nombre') &&
+            claseData.containsKey('hora')) {
 
-          if (coordenadas != null && nombreAula != null) {
-            aulasConCoordenadas.add({
-              'nombre': nombreAula,
-              'latitud': coordenadas.latitude,
-              'longitud': coordenadas.longitude,
-            });
+          final aulaRef = claseData['aula'] as DocumentReference;
+          final aulaSnapshot = await aulaRef.get();
+
+          if (aulaSnapshot.exists) {
+            final aulaData = aulaSnapshot.data() as Map<String, dynamic>;
+
+            // Validar que el aula tenga coordenadas
+            if (aulaData.containsKey('coordenadas') && aulaData['coordenadas'] is GeoPoint) {
+              final geoPoint = aulaData['coordenadas'] as GeoPoint;
+
+              clasesInfo.add({
+                'nombreClase': claseData['nombre'],
+                'hora': claseData['hora'],
+                'nombreAula': aulaData['aula'] ?? 'Aula sin nombre',
+                'latitud': geoPoint.latitude,
+                'longitud': geoPoint.longitude,
+              });
+            }
           }
         }
       }
 
-      return aulasConCoordenadas;
-
+      return clasesInfo;
     } catch (e) {
-      print('Error al obtener las aulas del estudiante: $e');
-      // En caso de error, devuelve una lista vacía para no bloquear la UI.
-      return [];
+      print('Error en getClasesInfoParaEstudiante: $e');
+      return []; // Devuelve una lista vacía en caso de error
     }
   }
 }

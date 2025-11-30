@@ -8,6 +8,7 @@ import 'package:proyecto_final/services/queriesFirestore/estudianteQueries.dart'
 
 class Mapa extends StatefulWidget {
   const Mapa({super.key});
+
   @override
   State<Mapa> createState() => _MapaState();
 }
@@ -15,20 +16,20 @@ class Mapa extends StatefulWidget {
 class _MapaState extends State<Mapa> {
   late final MapController _mapController;
 
-  // Coordenadas de la escuela como una constante
-  static const LatLng _schoolLocation = LatLng(21.47884788795137, -104.86588398779995);
-
-  // La posición del usuario empieza en un punto neutro hasta que se obtenga.
+  static const LatLng _schoolLocation = LatLng(
+    21.47884788795137,
+    -104.86588398779995,
+  );
   LatLng _currentPosition = _schoolLocation;
 
-  List<Map<String, dynamic>> _aulasDelEstudiante = [];
+  List<Map<String, dynamic>> _proximasClases = [];
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
     _determinePosition(moveMap: false);
-    _cargarAulas();
+    _cargarClases();
   }
 
   @override
@@ -37,22 +38,30 @@ class _MapaState extends State<Mapa> {
     super.dispose();
   }
 
-  Future<void> _cargarAulas() async {
+  Future<void> _cargarClases() async {
     final user = Provider.of<UserProvider>(context, listen: false).user;
     if (user == null || user.uid.isEmpty) return;
 
     try {
-      final aulas = await EstudianteQueries.getAulasDeEstudiante(user.uid);
+      final clases = await EstudianteQueries.getClasesInfoParaEstudiante(
+        user.uid,
+      );
+      clases.sort((a, b) {
+        final horaA = a['hora'] as String? ?? '99:99';
+        final horaB = b['hora'] as String? ?? '99:99';
+        return horaA.compareTo(horaB);
+      });
+
       if (mounted) {
         setState(() {
-          _aulasDelEstudiante = aulas;
+          _proximasClases = clases;
         });
       }
     } catch (e) {
-      print('Error al cargar las aulas en el mapa: $e');
-      if(mounted){
+      print('Error al cargar las clases en el mapa: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No se pudieron cargar las aulas.'))
+          const SnackBar(content: Text('No se pudieron cargar las clases.')),
         );
       }
     }
@@ -61,25 +70,23 @@ class _MapaState extends State<Mapa> {
   Future<void> _determinePosition({bool moveMap = true}) async {
     bool serviceEnabled;
     LocationPermission permission;
-
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Por favor, activa los servicios de ubicación.'))
+          const SnackBar(
+            content: Text('Por favor, activa los servicios de ubicación.'),
+          ),
         );
       }
       return;
     }
-
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return;
     }
-
     Position position = await Geolocator.getCurrentPosition();
-
     if (mounted) {
       setState(() {
         _currentPosition = LatLng(position.latitude, position.longitude);
@@ -94,20 +101,52 @@ class _MapaState extends State<Mapa> {
     _mapController.move(_schoolLocation, 17.0);
   }
 
+  // 1. Nueva función para formatear la hora de 24h a 12h con am/pm
+  String _formatTime12Hour(String time24h) {
+    try {
+      final parts = time24h.split(':');
+      if (parts.length != 2)
+        return time24h; // Devuelve original si el formato es incorrecto
+
+      int hour = int.parse(parts[0]);
+      final String minute = parts[1];
+      final String period = hour >= 12 ? 'pm' : 'am';
+
+      if (hour > 12) {
+        hour -= 12;
+      } else if (hour == 0) {
+        hour = 12;
+      }
+
+      return '$hour:$minute $period';
+    } catch (e) {
+      return time24h; // En caso de error, devuelve el string original
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<Marker> aulasMarkers = _aulasDelEstudiante.map((aula) {
+    final List<Marker> clasesMarkers = _proximasClases.map((clase) {
       return Marker(
-        point: LatLng(aula['latitud'], aula['longitud']),
-        width: 80,
-        height: 80,
+        point: LatLng(clase['latitud'], clase['longitud']),
+        width: 45,
+        height: 45,
         child: Tooltip(
-          message: aula['nombre'] ?? 'Aula',
-          child: Icon(
-            Icons.school_outlined,
-            color: Colors.deepOrange,
-            size: 35,
-            shadows: [Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 4)],
+          message: "${clase['nombreClase']}\n${clase['nombreAula']}",
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.deepOrange,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.school, color: Colors.white, size: 22),
           ),
         ),
       );
@@ -115,61 +154,126 @@ class _MapaState extends State<Mapa> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Mi mapa de clases", style: TextStyle(fontWeight: FontWeight.bold),),
+        title: const Text(
+          "Mi mapa de clases",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
       ),
-      body: FlutterMap(
-        mapController: _mapController,
-        options: const MapOptions(
-          initialCenter: _schoolLocation,
-          initialZoom: 17.0,
-          maxZoom: 18.4,
-        ),
+      body: Column(
         children: [
-          TileLayer(
-            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            subdomains: ['a', 'b', 'c'],
-          ),
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: _currentPosition,
-                width: 40,
-                height: 40,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.blue.withOpacity(0.25))),
-                    Container(
-                      width: 15,
-                      height: 15,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.blue,
-                        border: Border.all(color: Colors.white, width: 2),
+          // PARTE SUPERIOR: EL MAPA
+          Expanded(
+            flex: 4,
+            child: FlutterMap(
+              mapController: _mapController,
+              options: const MapOptions(
+                initialCenter: _schoolLocation,
+                initialZoom: 17.0,
+                maxZoom: 18.4,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  subdomains: ['a', 'b', 'c'],
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _currentPosition,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.blue.withOpacity(0.25),
+                            ),
+                          ),
+                          Container(
+                            width: 15,
+                            height: 15,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.blue,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    ...clasesMarkers,
                   ],
                 ),
-              ),
-              ...aulasMarkers,
-            ],
+              ],
+            ),
+          ),
+          // PARTE INFERIOR: LISTA DE CLASES
+          Expanded(
+            flex: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'Próximas clases',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                    itemCount: _proximasClases.length,
+                    itemBuilder: (context, index) {
+                      final clase = _proximasClases[index];
+                      return Card(
+                        elevation: 2.0,
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        child: ListTile(
+                          // 2. Icono cambiado a marcador de mapa
+                          leading: const Icon(
+                            Icons.location_on_outlined,
+                            color: Colors.indigo,
+                          ),
+                          title: Text(
+                            clase['nombreClase'] ?? 'Clase',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(clase['nombreAula'] ?? 'Aula'),
+                          // 3. Usamos la función para formatear la hora
+                          trailing: Text(
+                            _formatTime12Hour(clase['hora'] ?? '--:--'),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      // 6. Columna de botones elevada para no ser tapada por la BottomNavigationBar
+      // 4. Padding de los botones corregido a un valor adecuado
       floatingActionButton: Padding(
-        // Añadimos un padding inferior para "subir" los botones.
-        // El valor 80.0 es un buen punto de partida. Puedes ajustarlo si es necesario.
-        padding: const EdgeInsets.only(bottom: 80.0),
+        padding: const EdgeInsets.only(bottom: 410.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            // Usamos .small para que sean más compactos y se vean mejor apilados
             FloatingActionButton.small(
-              onPressed: _cargarAulas,
+              onPressed: _cargarClases,
               heroTag: 'refresh_button',
-              tooltip: 'Refrescar aulas',
+              tooltip: 'Refrescar clases',
               child: const Icon(Icons.refresh),
             ),
             const SizedBox(height: 10),
