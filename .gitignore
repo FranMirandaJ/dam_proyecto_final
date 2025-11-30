@@ -33,7 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 pubspec.lock
-
+functions/node_modules/
+functions/firebase-debug.log
+functions/firebase-debug.*.log
+functions/.env
+functions/.runtimeconfig.json
 # Symbolication related
 app.*.symbols
 

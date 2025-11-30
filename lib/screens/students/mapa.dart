@@ -299,9 +299,8 @@ class _MapaState extends State<Mapa> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate:
-                      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  subdomains: ['a', 'b', 'c'],
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.tu_nombre.checktec',
                 ),
                 MarkerLayer(
                   markers: [

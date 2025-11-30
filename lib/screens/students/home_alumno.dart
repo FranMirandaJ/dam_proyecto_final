@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // NUEVO
+import 'package:firebase_auth/firebase_auth.dart';       // NUEVO
+import 'package:firebase_messaging/firebase_messaging.dart'; // NUEVO
 import 'package:proyecto_final/screens/students/dashboard_alumno.dart';
 import 'package:proyecto_final/screens/students/notificaciones_alumno.dart';
 import 'package:proyecto_final/screens/students/scanear_qr.dart';
@@ -17,12 +20,56 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   final Color primaryColor = const Color(0xFF2563EB);
 
   // LISTA DE PANTALLAS
-  // Importante: El índice 2 es un "hueco" para el botón central, por eso ponemos un Container vacío.
   late final List<Widget> _screens = [
     StudentDashboardScreen(),      // Índice 0
-    Mapa(),              // Índice 1
-    StudentNotificationScreen(),    // Índice 2
+    Mapa(),                        // Índice 1
+    StudentNotificationScreen(),   // Índice 2
   ];
+
+  // --- 1. AQUÍ INICIAMOS LA AUTO-SUSCRIPCIÓN ---
+  @override
+  void initState() {
+    super.initState();
+    // Al entrar al Home, verificamos silenciosamente las suscripciones
+    _verificarSuscripcionesEnSegundoPlano();
+  }
+
+  // --- 2. ESTA ES LA FUNCIÓN SILENCIOSA QUE CONECTA AL ALUMNO ---
+  void _verificarSuscripcionesEnSegundoPlano() async {
+    User? usuario = FirebaseAuth.instance.currentUser;
+    if (usuario == null) return;
+
+    try {
+      final fcm = FirebaseMessaging.instance;
+
+      // A. Pedimos permiso (si ya lo tiene, no hace nada; si no, pregunta)
+      await fcm.requestPermission(alert: true, badge: true, sound: true);
+
+      // B. Buscamos las clases (Misma lógica que usamos en notificaciones)
+      // Creamos la referencia del alumno para buscar en el array
+      DocumentReference refAlumno = FirebaseFirestore.instance
+          .collection('usuario')
+          .doc(usuario.uid);
+
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('clase')
+          .where('alumnos', arrayContains: refAlumno)
+          .get();
+
+      // C. Nos suscribimos a todas las clases encontradas
+      for (var doc in querySnapshot.docs) {
+        String claseId = doc.id;
+        String tema = "clase_$claseId";
+
+        // Esto es seguro: si ya estás suscrito, Firebase lo ignora.
+        await fcm.subscribeToTopic(tema);
+        print("✅ (Auto-Suscripción en Home) Conectado al tema: $tema");
+      }
+    } catch (e) {
+      // Error silencioso para no molestar al usuario
+      print("⚠️ Nota: Error leve al intentar suscribirse en segundo plano: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,10 +77,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       extendBody: true, // Esto ayuda a que el fondo se vea bien detrás del notch
 
       // Lógica para mostrar la pantalla correcta.
-      // Si por error cae en el índice 2 (hueco), mostramos el dashboard para no tronar.
       body: _screens[_currentIndex],
 
-      // --- 1. BOTÓN FLOTANTE ---
+      // --- 3. BOTÓN FLOTANTE (INTACTO) ---
       floatingActionButton: Transform.translate(
         offset: const Offset(0, -10), // Mueve el botón 10 píxeles hacia arriba
         child: SizedBox(
@@ -54,19 +100,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      // --- 2. BARRA INFERIOR ---
+      // --- 4. BARRA INFERIOR (INTACTA) ---
       bottomNavigationBar: BottomAppBar(
-
-        // --- AQUÍ ESTÁ EL ARREGLO DEL ERROR ---
-        // Envolvemos el BottomNavigationBar en un Container con altura fija.
-        // kBottomNavigationBarHeight es la altura estándar (56.0), le damos un poco más (60)
-        // para evitar el overflow de los 2 pixeles.
         child: SizedBox(
           height: 60,
           child: BottomNavigationBar(
             currentIndex: _currentIndex,
             onTap: (index) {
-
               setState(() {
                 _currentIndex = index;
               });
@@ -78,7 +118,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             selectedItemColor: primaryColor,
             unselectedItemColor: Colors.grey.shade400,
 
-            // Forzamos tamaños de fuente pequeños para que no empujen el layout
             selectedFontSize: 12,
             unselectedFontSize: 12,
             iconSize: 24,
@@ -92,7 +131,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 icon: Icon(Icons.map_rounded),
                 label: 'Mapa',
               ),
-
               BottomNavigationBarItem(
                 icon: Icon(Icons.notifications_rounded),
                 label: 'Notificaciones',

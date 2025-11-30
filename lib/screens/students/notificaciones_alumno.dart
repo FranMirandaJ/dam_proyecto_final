@@ -1,120 +1,204 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
-class StudentNotificationScreen extends StatelessWidget {
+class StudentNotificationScreen extends StatefulWidget {
   const StudentNotificationScreen({Key? key}) : super(key: key);
 
   @override
+  State<StudentNotificationScreen> createState() => _StudentNotificationScreenState();
+}
+
+class _StudentNotificationScreenState extends State<StudentNotificationScreen> {
+  User? get currentUser => FirebaseAuth.instance.currentUser;
+  Stream<QuerySnapshot>? _notificacionesStream;
+
+  // NUEVO: Aquí guardaremos los nombres de las materias (Ej: "id123": "Matemáticas")
+  Map<String, String> nombresMaterias = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _inicializarStream();
+  }
+
+  void _inicializarStream() async {
+    if (currentUser == null) return;
+
+    try {
+      DocumentReference refAlumno = FirebaseFirestore.instance
+          .collection('usuario')
+          .doc(currentUser!.uid);
+
+      final clasesDondeEstoy = await FirebaseFirestore.instance
+          .collection('clase')
+          .where('alumnos', arrayContains: refAlumno)
+          .get();
+
+      if (clasesDondeEstoy.docs.isEmpty) {
+        setState(() => _notificacionesStream = null);
+        return;
+      }
+
+      // NUEVO: Llenamos el diccionario de nombres antes de seguir
+      Map<String, String> tempNombres = {};
+      for (var doc in clasesDondeEstoy.docs) {
+        // Asumimos que el campo en la BD se llama 'nombre' (como en tu imagen anterior)
+        String nombreMateria = doc['nombre'] ?? 'Clase';
+        tempNombres[doc.id] = nombreMateria;
+      }
+
+      List<DocumentReference> listaClasesRefs = clasesDondeEstoy.docs
+          .map((doc) => doc.reference)
+          .toList();
+
+      // No olvides quitar el listener de aquí si ya lo pusiste en main.dart
+      _activarNotificacionesFCM(listaClasesRefs);
+
+      setState(() {
+        // Guardamos el mapa de nombres en el estado
+        nombresMaterias = tempNombres;
+
+        _notificacionesStream = FirebaseFirestore.instance
+            .collection('notificaciones')
+            .where('claseId', whereIn: listaClasesRefs)
+            .orderBy('fecha', descending: true)
+            .snapshots();
+      });
+
+    } catch (e) {
+      print("ERROR: $e");
+    }
+  }
+
+  // Solo suscripción (sin listen, porque está en main.dart)
+  void _activarNotificacionesFCM(List<DocumentReference> misClases) async {
+    final fcm = FirebaseMessaging.instance;
+    NotificationSettings settings = await fcm.requestPermission(alert: true, badge: true, sound: true);
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      for (var ref in misClases) {
+        await fcm.subscribeToTopic("clase_${ref.id}");
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Colores del tema del estudiante
     final Color primaryBlue = const Color(0xFF2563EB);
     final Color textDark = const Color(0xFF1F222E);
-    final Color bgWhite = const Color(0xFFF5F6FA);
 
     return Scaffold(
-      backgroundColor: Colors.white, // Fondo blanco limpio
-
-      // 1. APP BAR
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        // Si esta pantalla es una pestaña principal del Home, no suele llevar botón "Atrás".
-        // Si la abres con push, Flutter lo pone automático.
-        // Si quieres quitarlo, usa: automaticallyImplyLeading: false,
         title: Text(
           "Notificaciones",
-          style: TextStyle(
-            color: textDark,
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+          style: TextStyle(color: textDark, fontWeight: FontWeight.bold, fontSize: 20),
         ),
         actions: [
-          // Badge con el número de notificaciones no leídas
-          Container(
-            margin: const EdgeInsets.only(right: 20),
-            padding: const EdgeInsets.all(8), // Tamaño del círculo
-            decoration: BoxDecoration(
-              color: primaryBlue,
-              shape: BoxShape.circle,
-            ),
-            child: const Text(
-              "2",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
+          StreamBuilder<QuerySnapshot>(
+              stream: _notificacionesStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox();
+                return Container(
+                  margin: const EdgeInsets.only(right: 20),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: primaryBlue, shape: BoxShape.circle),
+                  child: Text(
+                    "${snapshot.data!.docs.length}",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                );
+              }
           ),
         ],
       ),
+      body: _notificacionesStream == null
+          ? Center(child: Text("Cargando...", style: TextStyle(color: Colors.grey)))
+          : StreamBuilder<QuerySnapshot>(
+        stream: _notificacionesStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-      // 2. LISTA SCROLLEABLE
-      body: ListView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        children: [
+          final docs = snapshot.data?.docs;
+          if (docs == null || docs.isEmpty) {
+            return Center(child: Text("Sin notificaciones", style: TextStyle(color: Colors.grey.shade500)));
+          }
 
-          // NOTIFICACIÓN 1: Nueva clase (No leída)
-          _buildNotificationCard(
-            icon: Icons.calendar_today_rounded,
-            iconColor: primaryBlue,
-            title: "Nueva clase programada",
-            body: "Clase de Programación mañana a las 10:00 AM en el salón B-205",
-            time: "Hace 5 min",
-            isUnread: true,
-          ),
+          return ListView.builder(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            itemCount: docs.length + 1,
+            itemBuilder: (context, index) {
+              if (index == docs.length) return const SizedBox(height: 100);
 
-          // NOTIFICACIÓN 2: Advertencia (No leída)
-          _buildNotificationCard(
-            icon: Icons.warning_amber_rounded,
-            iconColor: const Color(0xFFFFA000), // Amber/Naranja
-            title: "Recordatorio importante",
-            body: "Tienes 2 faltas acumuladas este mes. Recuerda asistir a todas tus clases.",
-            time: "Hace 1 hora",
-            isUnread: true,
-          ),
+              final data = docs[index].data() as Map<String, dynamic>;
 
-          // NOTIFICACIÓN 3: Éxito (Leída)
-          _buildNotificationCard(
-            icon: Icons.check_circle_outline_rounded,
-            iconColor: const Color(0xFF00C853), // Verde
-            title: "Asistencia confirmada",
-            body: "Tu asistencia a Matemáticas fue registrada exitosamente.",
-            time: "Hace 3 horas",
-            isUnread: false,
-          ),
+              // 1. FECHA
+              String tiempoAtras = "Reciente";
+              bool esReciente = false;
+              if (data['fecha'] != null) {
+                Timestamp t = data['fecha'];
+                DateTime date = t.toDate();
+                Duration diff = DateTime.now().difference(date);
+                if (diff.inHours < 24) {
+                  esReciente = true;
+                  tiempoAtras = diff.inMinutes < 60 ? "Hace ${diff.inMinutes} min" : "Hace ${diff.inHours} h";
+                } else {
+                  tiempoAtras = DateFormat('dd MMM').format(date);
+                }
+              }
 
-          // NOTIFICACIÓN 4: Info (Leída)
-          _buildNotificationCard(
-            icon: Icons.access_time_rounded,
-            iconColor: const Color(0xFF757575), // Gris
-            title: "Próxima clase",
-            body: "Tu clase de Base de Datos comienza en 30 minutos. Salón C-301",
-            time: "Ayer",
-            isUnread: false,
-          ),
+              // 2. ICONO
+              IconData icono = Icons.notifications_none_rounded;
+              Color colorIcono = primaryBlue;
+              String titulo = data['titulo'] ?? 'Aviso';
+              if (titulo.toLowerCase().contains('examen')) {
+                icono = Icons.warning_amber_rounded;
+                colorIcono = const Color(0xFFFFA000);
+              } else if (titulo.toLowerCase().contains('tarea')) {
+                icono = Icons.assignment_outlined;
+                colorIcono = const Color(0xFF757575);
+              }
 
-          // NOTIFICACIÓN 5: Info Extra (Para probar scroll)
-          _buildNotificationCard(
-            icon: Icons.event_note_rounded,
-            iconColor: primaryBlue,
-            title: "Cambio de horario",
-            body: "La clase de Redes se ha movido al viernes a las 12:00 PM.",
-            time: "Ayer",
-            isUnread: false,
-          ),
+              // NUEVO: 3. OBTENER NOMBRE MATERIA
+              String nombreMateria = "Materia";
+              try {
+                // Obtenemos el ID de la referencia 'claseId'
+                dynamic claseRef = data['claseId'];
+                String idBusqueda = '';
+                if (claseRef is DocumentReference) {
+                  idBusqueda = claseRef.id;
+                } else {
+                  idBusqueda = claseRef.toString();
+                }
 
-          // --- AQUÍ ESTÁ EL CAMBIO ---
-          // Aumentamos el espacio final a 100 px para evitar que la barra tape la última tarjeta
-          const SizedBox(height: 100),
-        ],
+                // Buscamos en nuestro diccionario
+                nombreMateria = nombresMaterias[idBusqueda] ?? "General";
+              } catch (e) {
+                print(e);
+              }
+
+              return _buildNotificationCard(
+                icon: icono,
+                iconColor: colorIcono,
+                title: titulo,
+                body: data['cuerpo'] ?? '',
+                time: tiempoAtras,
+                isUnread: esReciente,
+                materia: nombreMateria, // PASAMOS EL NOMBRE AQUÍ
+              );
+            },
+          );
+        },
       ),
     );
   }
 
-  // --- WIDGET AUXILIAR PARA LA TARJETA ---
   Widget _buildNotificationCard({
     required IconData icon,
     required Color iconColor,
@@ -122,111 +206,75 @@ class StudentNotificationScreen extends StatelessWidget {
     required String body,
     required String time,
     required bool isUnread,
+    required String materia, // NUEVO PARÁMETRO
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      // Decoración del contenedor principal
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5)),
         ],
       ),
-      // Usamos ClipRRect para que el borde azul de la izquierda respete el redondeo
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: IntrinsicHeight( // Para que la línea azul crezca con el contenido
+        child: IntrinsicHeight(
           child: Row(
             children: [
-              // 1. BARRA LATERAL AZUL (Solo si no está leída)
-              if (isUnread)
-                Container(
-                  width: 6,
-                  color: const Color(0xFF2563EB), // Azul primario
-                )
-              else
-                const SizedBox(width: 6), // Espacio invisible para alinear
-
-              // 2. CONTENIDO
+              if (isUnread) Container(width: 6, color: const Color(0xFF2563EB)) else const SizedBox(width: 6),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ICONO CIRCULAR
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.1), // Fondo suave del mismo color
-                          shape: BoxShape.circle,
-                        ),
+                        decoration: BoxDecoration(color: iconColor.withOpacity(0.1), shape: BoxShape.circle),
                         child: Icon(icon, color: iconColor, size: 24),
                       ),
-
                       const SizedBox(width: 16),
-
-                      // TEXTOS
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Título y Punto Azul
+                            // NUEVO: ETIQUETA DE LA MATERIA ARRIBA DEL TÍTULO
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              margin: const EdgeInsets.only(bottom: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                materia,
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Expanded(
                                   child: Text(
                                     title,
-                                    style: TextStyle(
-                                      color: const Color(0xFF1F222E), // Texto oscuro
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                      // Si es unread, el texto es un poco más negro, si no, normal
-                                    ),
+                                    style: TextStyle(color: const Color(0xFF1F222E), fontWeight: FontWeight.bold, fontSize: 15),
                                   ),
                                 ),
-                                // PUNTO AZUL (Indicador de nuevo)
                                 if (isUnread)
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF2563EB),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
+                                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF2563EB), shape: BoxShape.circle)),
                               ],
                             ),
-
                             const SizedBox(height: 6),
-
-                            // Cuerpo del mensaje
-                            Text(
-                              body,
-                              style: const TextStyle(
-                                color: Color(0xFF757575), // Gris texto
-                                fontSize: 13,
-                                height: 1.4, // Interlineado
-                              ),
-                            ),
-
+                            Text(body, style: const TextStyle(color: Color(0xFF757575), fontSize: 13, height: 1.4)),
                             const SizedBox(height: 8),
-
-                            // Tiempo
-                            Text(
-                              time,
-                              style: TextStyle(
-                                color: const Color(0xFF9E9E9E), // Gris clarito
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                            Text(time, style: TextStyle(color: const Color(0xFF9E9E9E), fontSize: 12, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
