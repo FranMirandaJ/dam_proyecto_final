@@ -1,259 +1,464 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/user_provider.dart';
 
-class TeacherDashboardScreen extends StatelessWidget {
+class TeacherDashboardScreen extends StatefulWidget {
   const TeacherDashboardScreen({Key? key}) : super(key: key);
 
   @override
+  State<TeacherDashboardScreen> createState() => _TeacherDashboardScreenState();
+}
+
+class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // --- LÓGICA DE REFRESH INTELIGENTE ---
+  void _scheduleNextRefresh(List<QueryDocumentSnapshot> docs) {
+    _timer?.cancel();
+
+    final now = DateTime.now();
+    DateTime? nextRefreshTime;
+
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final String horaInicioStr = data['hora'] ?? '00:00';
+      final String? horaFinRaw = data['horaFin'];
+
+      final start = _parseTimeToday(horaInicioStr, now);
+
+      DateTime end;
+      if (horaFinRaw != null) {
+        end = _parseTimeToday(horaFinRaw, now);
+      } else {
+        end = start.add(const Duration(hours: 1));
+      }
+
+      if (start.isAfter(now)) {
+        if (nextRefreshTime == null || start.isBefore(nextRefreshTime)) {
+          nextRefreshTime = start;
+        }
+      }
+
+      if (end.isAfter(now)) {
+        if (nextRefreshTime == null || end.isBefore(nextRefreshTime)) {
+          nextRefreshTime = end;
+        }
+      }
+    }
+
+    if (nextRefreshTime != null) {
+      final durationUntilRefresh = nextRefreshTime.difference(now) + const Duration(seconds: 30);
+      _timer = Timer(durationUntilRefresh, () {
+        if (mounted) {
+          setState(() {});
+          _scheduleNextRefresh(docs);
+        }
+      });
+    }
+  }
+
+  DateTime _parseTimeToday(String timeStr, DateTime now) {
+    try {
+      final parts = timeStr.split(':');
+      final hour = int.parse(parts[0].trim());
+      final minute = int.parse(parts[1].trim());
+      return DateTime(now.year, now.month, now.day, hour, minute);
+    } catch (e) {
+      return DateTime(now.year, now.month, now.day, 0, 0);
+    }
+  }
+
+  double _timeStringToDouble(String timeString) {
+    try {
+      final parts = timeString.split(':');
+      if (parts.length != 2) return 0.0;
+      final hour = int.parse(parts[0].trim());
+      final minute = int.parse(parts[1].trim());
+      return hour + minute / 60.0;
+    } catch (e) {
+      return 0.0;
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await Future.delayed(const Duration(seconds: 1));
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Colores extraídos de tu imagen (Tema Verde)
+    final userProvider = Provider.of<UserProvider>(context);
+    final user = userProvider.user;
+
+    if (user == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     final Color primaryGreen = const Color(0xFF00C853);
     final Color backgroundWhite = const Color(0xFFF5F6FA);
     final Color textDark = const Color(0xFF1F222E);
 
     return Scaffold(
-      backgroundColor: primaryGreen, // Fondo verde para la parte superior
+      backgroundColor: primaryGreen,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ---------------------------------------------
-            // 1. ENCABEZADO VERDE (Perfil y Estadísticas)
-            // ---------------------------------------------
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Fila Superior: Saludo y Avatar
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            "Buenos días",
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            "Prof. María García",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Avatar
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Center(
-                          child: Text(
-                            "MG",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+        // 1. STREAM DE CLASES
+        child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('clase')
+                .where('profesor', isEqualTo: FirebaseFirestore.instance.doc('usuario/${user.uid}'))
+                .snapshots(),
 
-                  const SizedBox(height: 30),
+            builder: (context, snapshotClases) {
+              if (snapshotClases.hasError) return const Center(child: Text("Error cargando clases"));
+              if (!snapshotClases.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
-                  // Fila de Estadísticas
-                  Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildStatItem("3", "Clases hoy"),
-                        _buildVerticalDivider(),
-                        _buildStatItem("85", "Estudiantes"),
-                        _buildVerticalDivider(),
-                        _buildStatItem("94%", "Asistencia"),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+              final clasesDocsRaw = snapshotClases.data!.docs;
 
-            const SizedBox(height: 10),
+              // --- CORRECCIÓN: ORDENAMIENTO MANUAL POR HORA ---
+              // Creamos una copia ordenada de la lista
+              final List<QueryDocumentSnapshot> sortedDocs = List.from(clasesDocsRaw);
+              sortedDocs.sort((a, b) {
+                final dataA = a.data() as Map<String, dynamic>;
+                final dataB = b.data() as Map<String, dynamic>;
 
-            // ---------------------------------------------
-            // 2. CONTENEDOR BLANCO (LISTA SCROLLEABLE)
-            // ---------------------------------------------
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: backgroundWhite,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(30),
-                    topRight: Radius.circular(30),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    // Título de la sección
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-                      child: Row(
-                        children: [
-                          Text(
-                            "Mis Clases",
-                            style: TextStyle(
-                              color: textDark,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                final double tA = _timeStringToDouble(dataA['hora'] ?? '00:00');
+                final double tB = _timeStringToDouble(dataB['hora'] ?? '00:00');
 
-                    // Lista de Clases
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        physics: const BouncingScrollPhysics(),
-                        children: [
-                          // Clase 1: Pasada
-                          _buildClassCard(
-                            subject: "Matemáticas",
-                            groupInfo: "Grupo 6A • 08:00",
-                            attendanceRatio: "26/28",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
+                return tA.compareTo(tB);
+              });
 
-                          // Clase 2: En Curso (Activa)
-                          _buildClassCard(
-                            subject: "Programación",
-                            groupInfo: "Grupo 5B • 10:00",
-                            attendanceRatio: "0/32",
-                            isActive: true,
-                            primaryColor: primaryGreen,
-                          ),
+              // Lista de referencias para filtrar asistencias globales
+              List<DocumentReference> listaRefsClases = [];
 
-                          // Clase 3: Futura
-                          _buildClassCard(
-                            subject: "Base de Datos",
-                            groupInfo: "Grupo 6B • 12:00",
-                            attendanceRatio: "0/25",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
+              // --- CÁLCULO DE EXPECTATIVAS ---
+              int totalClasesDictadasAcumuladas = 0;
+              int totalAsistenciasPosibles = 0;
 
-                          // Clase 4
-                          _buildClassCard(
-                            subject: "Redes II",
-                            groupInfo: "Grupo 7A • 14:00",
-                            attendanceRatio: "0/30",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
+              // Usamos sortedDocs para iterar (el orden no afecta la suma, pero mantenemos consistencia)
+              for (var doc in sortedDocs) {
+                final data = doc.data() as Map<String, dynamic>;
+                listaRefsClases.add(doc.reference);
 
-                          // Clases Extra para probar scroll
-                          _buildClassCard(
-                            subject: "Redes II",
-                            groupInfo: "Grupo 7A • 14:00",
-                            attendanceRatio: "0/30",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
-                          _buildClassCard(
-                            subject: "Redes II",
-                            groupInfo: "Grupo 7A • 14:00",
-                            attendanceRatio: "0/30",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
-                          _buildClassCard(
-                            subject: "Redes II",
-                            groupInfo: "Grupo 7A • 14:00",
-                            attendanceRatio: "0/30",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
-                          _buildClassCard(
-                            subject: "Redes II",
-                            groupInfo: "Grupo 7A • 14:00",
-                            attendanceRatio: "0/30",
-                            isActive: false,
-                            primaryColor: primaryGreen,
-                          ),
+                int dictadas = data['totalClasesDictadas'] ?? 0;
+                List<dynamic> alumnos = data['alumnos'] ?? [];
 
-                          // --- AQUÍ ESTÁ EL CAMBIO ---
-                          // Aumentamos el espacio final a 100 para que la barra no tape el último item
-                          const SizedBox(height: 100),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+                totalClasesDictadasAcumuladas += dictadas;
+                totalAsistenciasPosibles += (dictadas * alumnos.length);
+              }
+
+              // Programar Refresh Automático
+              if (_timer == null || !_timer!.isActive) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scheduleNextRefresh(sortedDocs);
+                });
+              }
+
+              // Si no tiene clases
+              if (listaRefsClases.isEmpty) {
+                return _buildBody(
+                    context: context,
+                    user: user,
+                    stats: [0, 0, 0],
+                    clasesDocs: [],
+                    allAsistencias: [],
+                    bgWhite: backgroundWhite,
+                    textDark: textDark
+                );
+              }
+
+              // 2. STREAM DE ASISTENCIAS (Para estadísticas globales)
+              return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('asistencia')
+                      .where('claseId', whereIn: listaRefsClases.take(30).toList())
+                      .snapshots(),
+
+                  builder: (context, snapshotAsistencias) {
+                    List<QueryDocumentSnapshot> todasLasAsistencias = [];
+                    if (snapshotAsistencias.hasData) {
+                      todasLasAsistencias = snapshotAsistencias.data!.docs;
+                    }
+
+                    int totalAsistenciasReales = todasLasAsistencias.length;
+
+                    // --- CÁLCULO FINAL DE ESTADÍSTICAS ---
+                    int totalFaltas = 0;
+                    if (totalAsistenciasPosibles >= totalAsistenciasReales) {
+                      totalFaltas = totalAsistenciasPosibles - totalAsistenciasReales;
+                    }
+
+                    double porcentaje = 0.0;
+                    if (totalAsistenciasPosibles > 0) {
+                      porcentaje = (totalAsistenciasReales / totalAsistenciasPosibles) * 100;
+                    } else if (totalAsistenciasPosibles == 0 && sortedDocs.isNotEmpty) {
+                      porcentaje = 100.0;
+                    }
+
+                    return _buildBody(
+                        context: context,
+                        user: user,
+                        stats: [porcentaje, totalClasesDictadasAcumuladas, totalFaltas],
+                        clasesDocs: sortedDocs, // Pasamos la lista ordenada
+                        allAsistencias: todasLasAsistencias,
+                        bgWhite: backgroundWhite,
+                        textDark: textDark,
+                        primaryGreen: primaryGreen
+                    );
+                  }
+              );
+            }
         ),
       ),
     );
   }
 
-  // Widget para estadísticas del encabezado
-  Widget _buildStatItem(String value, String label) {
+  // Cuerpo principal separado
+  Widget _buildBody({
+    required BuildContext context,
+    required dynamic user,
+    required List<num> stats, // [porcentaje, clases, faltas]
+    required List<QueryDocumentSnapshot> clasesDocs,
+    required List<QueryDocumentSnapshot> allAsistencias,
+    required Color bgWhite,
+    required Color textDark,
+    Color primaryGreen = const Color(0xFF00C853),
+  }) {
+    String porcentajeStr = stats[0].toStringAsFixed(0);
+    String clasesStr = stats[1].toString();
+    String faltasStr = stats[2].toString();
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+        // --- ENCABEZADO ---
+        Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Buenos días",
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        user.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        user.name.isNotEmpty ? user.name.substring(0, 2).toUpperCase() : "PR",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+
+              // ESTADÍSTICAS GLOBALES
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildStatItem("$porcentajeStr%", "Asistencia Global"),
+                    _buildVerticalDivider(),
+                    _buildStatItem(clasesStr, "Clases Dictadas"),
+                    _buildVerticalDivider(),
+                    _buildStatItem(faltasStr, "Faltas Globales"),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.9),
-            fontSize: 12,
+
+        const SizedBox(height: 10),
+
+        // --- LISTA DE CLASES ---
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: bgWhite,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(30),
+                topRight: Radius.circular(30),
+              ),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+                  child: Row(
+                    children: [
+                      Text(
+                        "Mis Clases",
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    color: primaryGreen,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: clasesDocs.length,
+                      itemBuilder: (context, index) {
+                        final data = clasesDocs[index].data() as Map<String, dynamic>;
+                        final docRef = clasesDocs[index].reference;
+
+                        final String materia = data['nombre'] ?? 'Sin nombre';
+                        final String hora = data['hora'] ?? '00:00';
+                        final String? horaFinRaw = data['horaFin'];
+                        final List<dynamic> alumnos = data['alumnos'] ?? [];
+                        final int totalAlumnos = alumnos.length;
+
+                        // --- LÓGICA DE CLASE ACTIVA (POR HORA) ---
+                        // Reutilizamos la lógica de tiempo del alumno para saber si está en curso
+                        bool isClassActive = false;
+                        final currentTime = TimeOfDay.now();
+                        final double currentDouble = currentTime.hour + currentTime.minute / 60.0;
+                        final double startDouble = _timeStringToDouble(hora);
+
+                        double endDouble = 0.0;
+                        if (horaFinRaw != null) {
+                          endDouble = _timeStringToDouble(horaFinRaw);
+                        } else if (startDouble > 0) {
+                          endDouble = startDouble + 1.0;
+                        }
+
+                        if (startDouble > 0 && endDouble > 0) {
+                          if (currentDouble >= startDouble && currentDouble <= endDouble) {
+                            isClassActive = true;
+                          }
+                        }
+
+                        // --- RESOLUCIÓN DEL NOMBRE DEL AULA ---
+                        final dynamic aulaField = data['aula'];
+
+                        return FutureBuilder<DocumentSnapshot>(
+                            future: (aulaField is DocumentReference) ? aulaField.get() : null,
+                            builder: (context, snapshotAula) {
+                              String nombreAula = "Sin asignar";
+                              if (aulaField is String) {
+                                nombreAula = aulaField;
+                              } else if (snapshotAula.hasData && snapshotAula.data != null && snapshotAula.data!.exists) {
+                                final aulaData = snapshotAula.data!.data() as Map<String, dynamic>;
+                                nombreAula = aulaData['aula'] ?? "Aula ??";
+                              }
+
+                              // --- CALCULAR ASISTENCIA DE HOY PARA ESTA CLASE ---
+                              final now = DateTime.now();
+                              final startOfDay = DateTime(now.year, now.month, now.day);
+                              final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+                              // Filtramos cuántos alumnos han checado HOY en esta clase
+                              int asistenciasHoy = allAsistencias.where((asistDoc) {
+                                final asistData = asistDoc.data() as Map<String, dynamic>;
+                                final dynamic claseRef = asistData['claseId'];
+                                final Timestamp? fechaTs = asistData['fecha'];
+
+                                if (fechaTs == null) return false;
+                                DateTime fecha = fechaTs.toDate();
+
+                                // Coincidencia: Misma clase Y fecha de hoy
+                                return claseRef == docRef && fecha.isAfter(startOfDay) && fecha.isBefore(endOfDay);
+                              }).length;
+
+                              return _buildClassCard(
+                                subject: materia,
+                                hora: hora,
+                                aula: nombreAula,
+                                attendanceRatio: "$asistenciasHoy/$totalAlumnos",
+                                isActive: isClassActive, // Pasamos el booleano calculado
+                                primaryColor: primaryGreen,
+                              );
+                            }
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 100), // Colchón
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildVerticalDivider() {
-    return Container(
-        height: 30,
-        width: 1,
-        color: Colors.white.withOpacity(0.3)
+  Widget _buildStatItem(String value, String label) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
+        ),
+      ],
     );
   }
 
-  // Widget de la Tarjeta de Clase
+  Widget _buildVerticalDivider() {
+    return Container(height: 30, width: 1, color: Colors.white.withOpacity(0.3));
+  }
+
   Widget _buildClassCard({
     required String subject,
-    required String groupInfo,
+    required String hora,
+    required String aula,
     required String attendanceRatio,
     required bool isActive,
     required Color primaryColor,
@@ -265,11 +470,11 @@ class TeacherDashboardScreen extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: isActive
-            ? Border.all(color: primaryColor, width: 1.5)
+            ? Border.all(color: primaryColor, width: 2.0)
             : Border.all(color: Colors.transparent),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: isActive ? primaryColor.withOpacity(0.15) : Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -277,7 +482,6 @@ class TeacherDashboardScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // 1. Icono del reloj
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -290,22 +494,22 @@ class TeacherDashboardScreen extends StatelessWidget {
               size: 24,
             ),
           ),
-
           const SizedBox(width: 16),
-
-          // 2. Información Central
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text(
-                      subject,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Color(0xFF1F222E),
+                    Expanded(
+                      child: Text(
+                        subject,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFF1F222E),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (isActive) ...[
@@ -330,17 +534,12 @@ class TeacherDashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  groupInfo,
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 14,
-                  ),
+                  "$hora • $aula",
+                  style: const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
               ],
             ),
           ),
-
-          // 3. Columna de Asistencia
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -354,10 +553,7 @@ class TeacherDashboardScreen extends StatelessWidget {
               ),
               const Text(
                 "asistencia",
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ],
           ),

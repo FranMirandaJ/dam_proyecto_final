@@ -1,5 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart' hide GeoPoint; // <--- AQUÍ ESTÁ LA CORRECCIÓN
+import 'package:geolocator/geolocator.dart'; // Asegúrate de agregarlo a pubspec.yaml
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({Key? key}) : super(key: key);
@@ -10,9 +13,207 @@ class QRScannerScreen extends StatefulWidget {
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
   final MobileScannerController controller = MobileScannerController();
+  bool _isProcessing = false; // Para evitar lecturas múltiples
 
-  // Definimos un tamaño fijo para el área de escaneo para que todo coincida
+  // Tamaño del área de escaneo
   final double scanSize = 300.0;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  // --- LÓGICA PRINCIPAL DE VALIDACIÓN Y REGISTRO ---
+  Future<void> _procesarCodigoQR(String rawCode) async {
+    if (_isProcessing) return; // Evita doble procesamiento
+    setState(() => _isProcessing = true);
+
+    try {
+      // 1. PARSEO DEL CÓDIGO
+      // Formato esperado: "CLASEID_TIMESTAMP"
+      final parts = rawCode.split('_');
+      if (parts.isEmpty) throw "Código QR inválido";
+
+      final String claseId = parts[0];
+      final String uidAlumno = FirebaseAuth.instance.currentUser!.uid;
+
+      // Mostrar carga
+      _mostrarDialogoCarga();
+
+      // 2. CONSULTAR DATOS DE LA CLASE
+      final claseDoc = await FirebaseFirestore.instance.collection('clase').doc(claseId).get();
+
+      if (!claseDoc.exists) throw "La clase no existe";
+      final dataClase = claseDoc.data()!;
+
+      // 2.1 Validar si el QR sigue activo según el profesor
+      if (dataClase['qrActivo'] == false) {
+        throw "El código QR ya no es válido o ha expirado.";
+      }
+
+      // 2.2 Validar si el alumno pertenece a la clase
+      final List<dynamic> alumnosInscritos = dataClase['alumnos'] ?? [];
+      // Buscamos si la referencia del usuario está en la lista
+      // Tu BD guarda referencias completas: /usuario/UID
+      final userRef = FirebaseFirestore.instance.doc('usuario/$uidAlumno');
+
+      // A veces Firestore compara referencias directo, a veces hay que comparar paths
+      bool estaInscrito = alumnosInscritos.any((a) => a == userRef);
+      if (!estaInscrito) throw "No estás inscrito en esta clase.";
+
+      // 3. VALIDACIÓN DE UBICACIÓN (GPS)
+      // Obtenemos referencia del aula para sacar sus coordenadas reales
+      final DocumentReference aulaRef = dataClase['aula'];
+      final aulaDoc = await aulaRef.get();
+
+      if (!aulaDoc.exists) throw "Error: Aula no encontrada en el sistema.";
+
+      // Asumiendo que guardaste coordenadas como GeoPoint o Mapa [lat, lng]
+      // Tu imagen mostraba un array [lat, lng], lo adaptamos:
+      final dynamic coordsData = aulaDoc['coordenadas'];
+      double aulaLat = 0;
+      double aulaLng = 0;
+
+      if (coordsData is GeoPoint) {
+        aulaLat = coordsData.latitude;
+        aulaLng = coordsData.longitude;
+      } else if (coordsData is List) {
+        // Si lo guardaste como array [lat, lng]
+        aulaLat = coordsData[0];
+        aulaLng = coordsData[1];
+      }
+
+      // Obtener posición actual del alumno
+      Position position = await _determinarPosicion();
+
+      // Calcular distancia en metros
+      double distanciaEnMetros = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          aulaLat,
+          aulaLng
+      );
+
+      print("Distancia al salón: $distanciaEnMetros metros");
+
+      // Rango permitido (ej. 50 metros)
+      if (distanciaEnMetros > 100) {
+        throw "Estás demasiado lejos del salón (${distanciaEnMetros.round()}m). Acércate más.";
+      }
+
+      // 4. VERIFICAR DUPLICADOS (Si ya checó hoy)
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+      final asistenciaExistente = await FirebaseFirestore.instance
+          .collection('asistencia')
+          .where('claseId', isEqualTo: claseDoc.reference)
+          .where('alumnoId', isEqualTo: userRef)
+          .where('fecha', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('fecha', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .get();
+
+      if (asistenciaExistente.docs.isNotEmpty) {
+        throw "Ya has registrado tu asistencia hoy.";
+      }
+
+      // 5. REGISTRAR ASISTENCIA
+      await FirebaseFirestore.instance.collection('asistencia').add({
+        'claseId': claseDoc.reference,
+        'alumnoId': userRef,
+        'fecha': FieldValue.serverTimestamp(),
+        'ubicacionRegistro': GeoPoint(position.latitude, position.longitude),
+        // 'estado': 1 // Ya acordamos que no es necesario, la existencia basta
+      });
+
+      // ÉXITO
+      if (mounted) {
+        Navigator.pop(context); // Cerrar loading
+        _mostrarExito("¡Asistencia registrada correctamente!");
+      }
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Cerrar loading
+        _mostrarError(e.toString());
+      }
+    } finally {
+      // Pequeño delay antes de permitir escanear de nuevo si falló
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  // Helper para permisos de GPS
+  Future<Position> _determinarPosicion() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('El GPS está desactivado.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Permisos de ubicación denegados.');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error('Permisos de ubicación denegados permanentemente.');
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  void _mostrarDialogoCarga() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  void _mostrarError(String mensaje) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Error"),
+        content: Text(mensaje),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK")
+          )
+        ],
+      ),
+    );
+  }
+
+  void _mostrarExito(String mensaje) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+        title: const Text("Éxito"),
+        content: Text(mensaje),
+        actions: [
+          TextButton(
+              onPressed: () {
+                Navigator.pop(ctx); // Cerrar alerta
+                Navigator.pop(context); // Regresar al dashboard
+              },
+              child: const Text("Aceptar")
+          )
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,61 +226,53 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       backgroundColor: backgroundColor,
       body: Stack(
         children: [
-          // ------------------------------------------------
-          // CAPA 1: LA CÁMARA
-          // ------------------------------------------------
+          // 1. CÁMARA
           MobileScanner(
             controller: controller,
             errorBuilder: (context, error, child) {
               return const Center(child: Icon(Icons.error, color: Colors.red));
             },
             onDetect: (capture) {
-              // Tu lógica de detección aquí
+              final List<Barcode> barcodes = capture.barcodes;
+              for (final barcode in barcodes) {
+                if (barcode.rawValue != null) {
+                  _procesarCodigoQR(barcode.rawValue!);
+                  break; // Procesar solo el primero
+                }
+              }
             },
           ),
 
-          // ------------------------------------------------
-          // CAPA 2: FONDO OSCURO CON HUECO
-          // ------------------------------------------------
-          // Usamos Positioned.fill para que ocupe toda la pantalla
-          // y el CustomPainter dibuje el hueco exactamente al centro.
+          // 2. FONDO OSCURO CON HUECO
           Positioned.fill(
             child: CustomPaint(
               painter: QRScannerOverlay(
                 overlayColor: Colors.black.withOpacity(0.8),
-                scanAreaSize: scanSize, // Usamos el mismo tamaño
+                scanAreaSize: scanSize,
                 borderRadius: 20,
               ),
             ),
           ),
 
-          // ------------------------------------------------
-          // CAPA 3: MARCOS AZULES (BRACKETS)
-          // ------------------------------------------------
-          // Usamos "Center" para forzar que esté exactamente en medio,
-          // coincidiendo con el hueco del paso anterior.
+          // 3. MARCOS AZULES
           Center(
             child: SizedBox(
-              width: scanSize,  // Mismo tamaño que el hueco
-              height: scanSize, // Mismo tamaño que el hueco
+              width: scanSize,
+              height: scanSize,
               child: CustomPaint(
                 painter: ScannerOverlayPainter(color: accentBlue),
               ),
             ),
           ),
 
-          // ------------------------------------------------
-          // CAPA 4: INTERFAZ DE USUARIO (TEXTOS)
-          // ------------------------------------------------
+          // 4. INTERFAZ
           SafeArea(
             child: Column(
               children: [
-                // --- CABECERA (Lo que querías conservar) ---
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Row(
                     children: [
-                      // Botón Atrás
                       CircleAvatar(
                         backgroundColor: Colors.white.withOpacity(0.1),
                         child: IconButton(
@@ -87,7 +280,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                           onPressed: () => Navigator.pop(context),
                         ),
                       ),
-                      // Texto Centrado
                       const Expanded(
                         child: Text(
                           "Escanear QR",
@@ -99,16 +291,13 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                           ),
                         ),
                       ),
-                      // Widget invisible para equilibrar el Row y que el título quede centrado
                       const SizedBox(width: 40),
                     ],
                   ),
                 ),
 
-                const Spacer(), // Empuja todo lo de abajo
+                const Spacer(),
 
-                // Texto informativo debajo del cuadro
-                // Le damos un padding top para que no pegue con el cuadro azul
                 Padding(
                   padding: EdgeInsets.only(top: scanSize + 40),
                   child: const Text(
@@ -117,9 +306,8 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                   ),
                 ),
 
-                const Spacer(), // Empuja el pie de página al fondo
+                const Spacer(),
 
-                // --- PIE DE PÁGINA (Solo GPS, sin botones) ---
                 Padding(
                   padding: const EdgeInsets.only(bottom: 30),
                   child: Row(
@@ -128,7 +316,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                       Icon(Icons.location_on_outlined, color: accentGreen, size: 18),
                       const SizedBox(width: 8),
                       const Text(
-                        "GPS Activo - Ubicación verificada",
+                        "Validación GPS Activa",
                         style: TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ],
@@ -143,11 +331,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 }
 
-// -------------------------------------------------------
-// CLASES DE PINTURA (NO CAMBIAN, PERO SON NECESARIAS)
-// -------------------------------------------------------
-
-// 1. Pinta el fondo oscuro con el hueco
+// ... (Las clases QRScannerOverlay y ScannerOverlayPainter se mantienen igual que en tu versión anterior)
 class QRScannerOverlay extends CustomPainter {
   final Color overlayColor;
   final double scanAreaSize;
@@ -162,21 +346,16 @@ class QRScannerOverlay extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Rect screenRect = Rect.fromLTWH(0, 0, size.width, size.height);
-
-    // Calculamos el centro exacto de la pantalla disponible
     final double cutOutLeft = (size.width - scanAreaSize) / 2;
     final double cutOutTop = (size.height - scanAreaSize) / 2;
-
     final RRect cutOutRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(cutOutLeft, cutOutTop, scanAreaSize, scanAreaSize),
       Radius.circular(borderRadius),
     );
-
     final Path backgroundPath = Path()
       ..addRect(screenRect)
       ..addRRect(cutOutRect)
       ..fillType = PathFillType.evenOdd;
-
     final Paint paint = Paint()..color = overlayColor;
     canvas.drawPath(backgroundPath, paint);
   }
@@ -185,10 +364,8 @@ class QRScannerOverlay extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// 2. Pinta las esquinas azules
 class ScannerOverlayPainter extends CustomPainter {
   final Color color;
-
   ScannerOverlayPainter({required this.color});
 
   @override
@@ -198,35 +375,18 @@ class ScannerOverlayPainter extends CustomPainter {
       ..strokeWidth = 4
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
-
     double cornerLength = 40;
 
-    // Top Left
-    Path pathTL = Path();
-    pathTL.moveTo(0, cornerLength);
-    pathTL.lineTo(0, 0);
-    pathTL.lineTo(cornerLength, 0);
+    Path pathTL = Path()..moveTo(0, cornerLength)..lineTo(0, 0)..lineTo(cornerLength, 0);
     canvas.drawPath(pathTL, paint);
 
-    // Top Right
-    Path pathTR = Path();
-    pathTR.moveTo(size.width - cornerLength, 0);
-    pathTR.lineTo(size.width, 0);
-    pathTR.lineTo(size.width, cornerLength);
+    Path pathTR = Path()..moveTo(size.width - cornerLength, 0)..lineTo(size.width, 0)..lineTo(size.width, cornerLength);
     canvas.drawPath(pathTR, paint);
 
-    // Bottom Left
-    Path pathBL = Path();
-    pathBL.moveTo(0, size.height - cornerLength);
-    pathBL.lineTo(0, size.height);
-    pathBL.lineTo(cornerLength, size.height);
+    Path pathBL = Path()..moveTo(0, size.height - cornerLength)..lineTo(0, size.height)..lineTo(cornerLength, size.height);
     canvas.drawPath(pathBL, paint);
 
-    // Bottom Right
-    Path pathBR = Path();
-    pathBR.moveTo(size.width - cornerLength, size.height);
-    pathBR.lineTo(size.width, size.height);
-    pathBR.lineTo(size.width, size.height - cornerLength);
+    Path pathBR = Path()..moveTo(size.width - cornerLength, size.height)..lineTo(size.width, size.height)..lineTo(size.width, size.height - cornerLength);
     canvas.drawPath(pathBR, paint);
   }
 
