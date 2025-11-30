@@ -452,12 +452,6 @@ class _MapaState extends State<Mapa> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            FloatingActionButton.small(
-              onPressed: _cargarClases,
-              heroTag: 'refresh_button',
-              tooltip: 'Refrescar clases',
-              child: const Icon(Icons.refresh),
-            ),
             const SizedBox(height: 10),
             FloatingActionButton.small(
               onPressed: _centerOnSchool,
