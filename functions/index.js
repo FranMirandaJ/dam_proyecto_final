@@ -7,47 +7,35 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+// AGREGAMOS 'onDocumentDeleted' A LOS IMPORTS
+const { onDocumentCreated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 
-// Inicializamos la app de admin para poder mandar mensajes
-admin.initializeApp();
+// Inicializamos la app de admin
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
 
+// --- FUNCIÓN 1: NOTIFICACIONES (YA EXISTÍA) ---
 exports.enviarNotificacionClase = onDocumentCreated("notificaciones/{notificacionId}", async (event) => {
 
-    // En V2, el 'snapshot' (el documento creado) viene dentro de event.data
     const snapshot = event.data;
+    if (!snapshot) return;
 
-    // Si no hay datos, salimos
-    if (!snapshot) {
-        console.log("No se encontraron datos asociados al evento.");
-        return;
-    }
-
-    // 1. Obtenemos los datos del documento
     const datos = snapshot.data();
 
-    // Verificación de seguridad
-    if (!datos.titulo || !datos.cuerpo || !datos.claseId) {
-        console.log("Faltan datos (titulo, cuerpo o claseId) para enviar la notificación");
-        return;
-    }
+    if (!datos.titulo || !datos.cuerpo || !datos.claseId) return;
 
-    // 2. Extraemos el ID de la clase
-    // Asumimos que es Reference. Si fuera string directo, borrar el .id
     let claseIdString;
     try {
         claseIdString = datos.claseId.id;
     } catch (e) {
-        // Fallback por si acaso lo guardaste como texto simple y no Referencia
         claseIdString = datos.claseId;
     }
 
-    // 3. Definimos el Tema (Topic)
     const tema = `clase_${claseIdString}`;
     console.log(`Intentando enviar notificación al tema: ${tema}`);
 
-    // 4. Construimos el mensaje
     const mensaje = {
         notification: {
             title: datos.titulo,
@@ -56,15 +44,34 @@ exports.enviarNotificacionClase = onDocumentCreated("notificaciones/{notificacio
         topic: tema,
         data: {
             click_action: "FLUTTER_NOTIFICATION_CLICK",
-            notificacionId: event.params.notificacionId // ID del documento
+            notificacionId: event.params.notificacionId
         }
     };
 
-    // 5. Enviamos a FCM
     try {
         await admin.messaging().send(mensaje);
         console.log("¡Notificación enviada con éxito!");
     } catch (error) {
         console.error("Error al enviar notificación:", error);
+    }
+});
+
+// --- FUNCIÓN 2: SINCRONIZACIÓN DE BORRADO (NUEVA) ---
+// Esta función se dispara automáticamente cuando borras un documento en 'usuario'
+exports.eliminarUsuarioAuth = onDocumentDeleted("usuario/{userId}", async (event) => {
+    const userId = event.params.userId;
+
+    console.log(`Detectado borrado de documento usuario/${userId}. Procediendo a borrar cuenta de Auth...`);
+
+    try {
+        // Usamos el SDK de Admin para borrar al usuario del sistema de Autenticación
+        await admin.auth().deleteUser(userId);
+        console.log(`✅ Cuenta de Auth para ${userId} eliminada exitosamente.`);
+    } catch (error) {
+        if (error.code === 'auth/user-not-found') {
+             console.log(`El usuario ${userId} ya no existía en Auth.`);
+        } else {
+             console.error("❌ Error al eliminar usuario de Auth:", error);
+        }
     }
 });

@@ -85,7 +85,7 @@ class _CreateTeacherModalState extends State<CreateTeacherModal> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Pequeña barra gris para indicar que se puede deslizar (opcional pero estético)
+                // Pequeña barra gris para indicar que se puede deslizar
                 Center(
                   child: Container(
                     width: 40,
@@ -121,20 +121,28 @@ class _CreateTeacherModalState extends State<CreateTeacherModal> {
                 ),
                 const SizedBox(height: 16),
 
+                // --- CAMPO DE CORREO CON VALIDACIÓN INSTITUCIONAL ---
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     labelText: "Correo Institucional",
-                    hintText: "@ittepic.edu.mx",
+                    hintText: "usuario@ittepic.edu.mx",
                     prefixIcon: const Icon(Icons.email_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  validator: (val) => (val == null || !val.contains("@"))
-                      ? "Correo inválido"
-                      : null,
+                  validator: (val) {
+                    if (val == null || val.isEmpty) {
+                      return "Requerido";
+                    }
+                    // Validación estricta del dominio
+                    if (!val.trim().endsWith("@ittepic.edu.mx")) {
+                      return "Debe terminar en @ittepic.edu.mx";
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 16),
 
@@ -176,21 +184,21 @@ class _CreateTeacherModalState extends State<CreateTeacherModal> {
                     ),
                     child: _isLoading
                         ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
                         : const Text(
-                            "Registrar docente",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Colors.white,
-                            ),
-                          ),
+                      "Registrar docente",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),

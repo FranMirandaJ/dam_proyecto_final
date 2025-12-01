@@ -125,8 +125,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
               final clasesDocsRaw = snapshotClases.data!.docs;
 
-              // --- CORRECCIÓN: ORDENAMIENTO MANUAL POR HORA ---
-              // Creamos una copia ordenada de la lista
+              // --- ORDENAMIENTO MANUAL POR HORA ---
               final List<QueryDocumentSnapshot> sortedDocs = List.from(clasesDocsRaw);
               sortedDocs.sort((a, b) {
                 final dataA = a.data() as Map<String, dynamic>;
@@ -138,14 +137,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 return tA.compareTo(tB);
               });
 
-              // Lista de referencias para filtrar asistencias globales
               List<DocumentReference> listaRefsClases = [];
-
-              // --- CÁLCULO DE EXPECTATIVAS ---
               int totalClasesDictadasAcumuladas = 0;
               int totalAsistenciasPosibles = 0;
 
-              // Usamos sortedDocs para iterar (el orden no afecta la suma, pero mantenemos consistencia)
               for (var doc in sortedDocs) {
                 final data = doc.data() as Map<String, dynamic>;
                 listaRefsClases.add(doc.reference);
@@ -157,14 +152,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 totalAsistenciasPosibles += (dictadas * alumnos.length);
               }
 
-              // Programar Refresh Automático
               if (_timer == null || !_timer!.isActive) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _scheduleNextRefresh(sortedDocs);
                 });
               }
 
-              // Si no tiene clases
               if (listaRefsClases.isEmpty) {
                 return _buildBody(
                     context: context,
@@ -177,7 +170,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 );
               }
 
-              // 2. STREAM DE ASISTENCIAS (Para estadísticas globales)
               return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('asistencia')
@@ -192,7 +184,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
                     int totalAsistenciasReales = todasLasAsistencias.length;
 
-                    // --- CÁLCULO FINAL DE ESTADÍSTICAS ---
                     int totalFaltas = 0;
                     if (totalAsistenciasPosibles >= totalAsistenciasReales) {
                       totalFaltas = totalAsistenciasPosibles - totalAsistenciasReales;
@@ -209,7 +200,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         context: context,
                         user: user,
                         stats: [porcentaje, totalClasesDictadasAcumuladas, totalFaltas],
-                        clasesDocs: sortedDocs, // Pasamos la lista ordenada
+                        clasesDocs: sortedDocs,
                         allAsistencias: todasLasAsistencias,
                         bgWhite: backgroundWhite,
                         textDark: textDark,
@@ -223,11 +214,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  // Cuerpo principal separado
   Widget _buildBody({
     required BuildContext context,
     required dynamic user,
-    required List<num> stats, // [porcentaje, clases, faltas]
+    required List<num> stats,
     required List<QueryDocumentSnapshot> clasesDocs,
     required List<QueryDocumentSnapshot> allAsistencias,
     required Color bgWhite,
@@ -241,7 +231,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --- ENCABEZADO ---
         Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -250,29 +239,34 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Columna de Bienvenida (se mantiene igual)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Buenos días",
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        user.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                  // --- CORRECCIÓN AQUÍ: USAR EXPANDED PARA EVITAR DESBORDAMIENTO ---
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Buenos días",
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          user.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis, // Cortar con ... si es muy largo
+                          maxLines: 1, // Asegurar que solo ocupe una línea (o 2 si prefieres)
+                        ),
+                      ],
+                    ),
                   ),
-                  // Nuevo Row para agrupar Avatar y Botón de Logout
+                  const SizedBox(width: 16), // Espacio entre el nombre y los botones
+                  // -----------------------------------------------------------------
+
                   Row(
                     children: [
-                      // Avatar del Profesor
                       Container(
                         width: 48,
                         height: 48,
@@ -293,8 +287,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10), // Espacio entre avatar y botón
-                      // Botón de Logout
+                      const SizedBox(width: 10),
                       Container(
                         width: 48,
                         height: 48,
@@ -313,12 +306,11 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           ),
                           tooltip: "Cerrar sesión",
                           onPressed: () {
-                            // Se inicia el cierre de sesión, pero no se espera (no await).
                             Auth().signOut(context);
                             Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (context) => const LoginRegister()),
-                            (Route<dynamic> route) => false,
+                              context,
+                              MaterialPageRoute(builder: (context) => const LoginRegister()),
+                                  (Route<dynamic> route) => false,
                             );
                           },
                         ),
@@ -329,7 +321,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               ),
               const SizedBox(height: 30),
 
-              // ESTADÍSTICAS GLOBALES
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                 decoration: BoxDecoration(
@@ -353,7 +344,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
         const SizedBox(height: 10),
 
-        // --- LISTA DE CLASES ---
         Expanded(
           child: Container(
             width: double.infinity,
@@ -400,8 +390,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         final List<dynamic> alumnos = data['alumnos'] ?? [];
                         final int totalAlumnos = alumnos.length;
 
-                        // --- LÓGICA DE CLASE ACTIVA (POR HORA) ---
-                        // Reutilizamos la lógica de tiempo del alumno para saber si está en curso
                         bool isClassActive = false;
                         final currentTime = TimeOfDay.now();
                         final double currentDouble = currentTime.hour + currentTime.minute / 60.0;
@@ -420,7 +408,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           }
                         }
 
-                        // --- RESOLUCIÓN DEL NOMBRE DEL AULA ---
                         final dynamic aulaField = data['aula'];
 
                         return FutureBuilder<DocumentSnapshot>(
@@ -434,12 +421,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                 nombreAula = aulaData['aula'] ?? "Aula ??";
                               }
 
-                              // --- CALCULAR ASISTENCIA DE HOY PARA ESTA CLASE ---
                               final now = DateTime.now();
                               final startOfDay = DateTime(now.year, now.month, now.day);
                               final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-                              // Filtramos cuántos alumnos han checado HOY en esta clase
                               int asistenciasHoy = allAsistencias.where((asistDoc) {
                                 final asistData = asistDoc.data() as Map<String, dynamic>;
                                 final dynamic claseRef = asistData['claseId'];
@@ -448,7 +433,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                 if (fechaTs == null) return false;
                                 DateTime fecha = fechaTs.toDate();
 
-                                // Coincidencia: Misma clase Y fecha de hoy
                                 return claseRef == docRef && fecha.isAfter(startOfDay) && fecha.isBefore(endOfDay);
                               }).length;
 
@@ -457,7 +441,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                 hora: hora,
                                 aula: nombreAula,
                                 attendanceRatio: "$asistenciasHoy/$totalAlumnos",
-                                isActive: isClassActive, // Pasamos el booleano calculado
+                                isActive: isClassActive,
                                 primaryColor: primaryGreen,
                               );
                             }
@@ -467,7 +451,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 100), // Colchón
+                const SizedBox(height: 100),
               ],
             ),
           ),
