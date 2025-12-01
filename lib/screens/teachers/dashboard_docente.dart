@@ -577,7 +577,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 ),
               ),
               const Text(
-                "asistencia",
+                "asistencias",
                 style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ],
