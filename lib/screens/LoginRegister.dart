@@ -5,6 +5,7 @@ import 'package:proyecto_final/providers/user_provider.dart';
 import 'package:proyecto_final/services/auth.dart';
 import 'package:proyecto_final/screens/students/home_alumno.dart';
 import 'package:proyecto_final/screens/teachers/home_docente.dart';
+import 'package:proyecto_final/screens/administrator/home_admin.dart';
 
 class LoginRegister extends StatefulWidget {
   const LoginRegister({super.key});
@@ -57,15 +58,16 @@ class _LoginRegisterState extends State<LoginRegister> {
             context,
             MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
           );
-          print("rol de alumno");
         } else if (rol == 'docente') {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const TeacherHomeScreen()),
           );
-          print("rol de docente");
         } else {
-          print("rol de admin");
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminHomeScreen()),
+          );
         }
       } else {
         await _auth.createUserWithEmailAndPassword(
