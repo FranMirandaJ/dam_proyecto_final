@@ -8,6 +8,9 @@ import 'admin_aulas.dart';
 import 'admin_periodos.dart';
 import 'admin_clases.dart';
 
+import 'widgets/create_teacher_modal.dart';
+import 'widgets/manage_aula_modal.dart';
+
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({Key? key}) : super(key: key);
 
@@ -105,12 +108,33 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         backgroundColor: primaryColor,
         child: const Icon(Icons.add, color: Colors.white),
         onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Crear nuevo en: ${_titles[_currentIndex]}"),
-            ),
-          );
-          // TODO: Aquí puedes agregar un switch(_currentIndex) para abrir el formulario correcto
+          if (_currentIndex == 0) {
+            // USUARIOS: Abrimos el Bottom Sheet
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              // ¡IMPORTANTE! Permite que el teclado empuje el modal
+              backgroundColor: Colors.transparent,
+              // Para ver los bordes redondeados
+              builder: (context) => const CreateTeacherModal(),
+            );
+          } else if (_currentIndex == 1) {
+            // --- AULAS: NUEVA LÓGICA ---
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true, // Importante para el teclado
+              backgroundColor: Colors.transparent,
+              builder: (context) =>
+                  const ManageAulaModal(), // Sin argumentos = Crear
+            );
+          } else {
+            // Otras pestañas...
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Crear nuevo en: ${_titles[_currentIndex]}"),
+              ),
+            );
+          }
         },
       ),
     );

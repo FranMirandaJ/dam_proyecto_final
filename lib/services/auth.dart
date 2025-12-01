@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:proyecto_final/providers/user_provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 class Auth {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -99,5 +100,46 @@ class Auth {
     Provider.of<UserProvider>(context, listen: false).clearUser();
     // Cerramos la sesión en Firebase
     await _auth.signOut();
+  }
+
+  Future<void> createTeacherAccount({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    FirebaseApp? tempApp;
+    try {
+      // 1. Inicializamos una instancia secundaria de Firebase
+      // Esto evita que se cierre la sesión del Administrador actual
+      tempApp = await Firebase.initializeApp(
+        name: 'TeacherCreationTempApp',
+        options: Firebase.app().options,
+      );
+
+      // 2. Creamos el usuario en esa instancia secundaria
+      UserCredential userCredential = await FirebaseAuth.instanceFor(
+        app: tempApp,
+      ).createUserWithEmailAndPassword(email: email, password: password);
+
+      // 3. Guardamos los datos en Firestore (Usando la instancia principal _firestore)
+      // Nota: 'rol' es 'docente'
+      if (userCredential.user != null) {
+        await _firestore
+            .collection('usuario')
+            .doc(userCredential.user!.uid)
+            .set({'email': email, 'nombre': fullName, 'rol': 'docente'});
+      }
+
+      // 4. Cerramos sesión en la instancia temporal para limpieza (opcional pero recomendado)
+      await FirebaseAuth.instanceFor(app: tempApp).signOut();
+    } catch (e) {
+      // Propagamos el error para manejarlo en el Modal
+      rethrow;
+    } finally {
+      // 5. Eliminamos la instancia temporal para liberar recursos
+      if (tempApp != null) {
+        await tempApp.delete();
+      }
+    }
   }
 }
