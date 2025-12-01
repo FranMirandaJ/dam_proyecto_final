@@ -277,9 +277,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                         size: 20,
                                       ),
                                       tooltip: "Cerrar sesión",
-                                      onPressed: () async {
-                                        await Auth().signOut(context);
-                                        // Redirige a la pantalla de login y elimina las rutas anteriores
+                                      onPressed: () {
+                                        // 1. Iniciamos el cierre de sesión sin esperar (sin await)
+                                        // para evitar que el provider actualice la UI a "Loading" y bloquee la navegación.
+                                        Auth().signOut(context);
+
+                                        // 2. Navegamos inmediatamente
                                         Navigator.pushAndRemoveUntil(
                                           context,
                                           MaterialPageRoute(
