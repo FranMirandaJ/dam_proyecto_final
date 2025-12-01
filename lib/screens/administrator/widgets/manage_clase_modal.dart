@@ -28,12 +28,11 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
   TimeOfDay _horaInicio = const TimeOfDay(hour: 7, minute: 0);
   TimeOfDay _horaFin = const TimeOfDay(hour: 8, minute: 0);
 
-  // Días (1 = Lunes, ..., 5 = Viernes)
+  // Días (1 = Lunes, ..., 6 = Sábado)
   List<int> _diasSeleccionados = [];
 
   // Alumnos
-  List<String> _alumnosSeleccionadosIds =
-      []; // Guardamos los IDs de los alumnos
+  List<String> _alumnosSeleccionadosIds = [];
 
   @override
   void initState() {
@@ -48,11 +47,9 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
     _nombreController.text = d['nombre'] ?? '';
     _grupoController.text = d['grupo'] ?? '';
 
-    // Parsear Horas "HH:mm"
     if (d['hora'] != null) _horaInicio = _parseTime(d['hora']);
     if (d['horaFin'] != null) _horaFin = _parseTime(d['horaFin']);
 
-    // Parsear Referencias (si existen)
     if (d['profesor'] is DocumentReference)
       _selectedProfesorId = (d['profesor'] as DocumentReference).id;
     if (d['aula'] is DocumentReference)
@@ -60,12 +57,10 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
     if (d['periodo'] is DocumentReference)
       _selectedPeriodoId = (d['periodo'] as DocumentReference).id;
 
-    // Días
     if (d['diasClase'] != null) {
       _diasSeleccionados = List<int>.from(d['diasClase']);
     }
 
-    // Alumnos (Array de Referencias -> Lista de IDs)
     if (d['alumnos'] != null) {
       _alumnosSeleccionadosIds = (d['alumnos'] as List)
           .map((ref) => (ref as DocumentReference).id)
@@ -74,8 +69,12 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
   }
 
   TimeOfDay _parseTime(String time) {
-    final parts = time.split(":");
-    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    try {
+      final parts = time.split(":");
+      return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    } catch (e) {
+      return const TimeOfDay(hour: 7, minute: 0);
+    }
   }
 
   String _formatTime(TimeOfDay time) {
@@ -99,11 +98,11 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
     }
   }
 
-  // --- SUBMODAL PARA SELECCIONAR ALUMNOS ---
   void _mostrarSelectorAlumnos() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Transparente para ver bordes
       builder: (ctx) => _AlumnosSelector(
         seleccionadosIniciales: _alumnosSeleccionadosIds,
         onConfirm: (nuevosSeleccionados) {
@@ -121,15 +120,25 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
         _selectedAulaId == null ||
         _selectedPeriodoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Debes seleccionar Profesor, Aula y Periodo"),
-        ),
+        const SnackBar(content: Text("Selecciona Profesor, Aula y Periodo")),
       );
       return;
     }
     if (_diasSeleccionados.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Selecciona al menos un día de clase")),
+        const SnackBar(content: Text("Selecciona al menos un día")),
+      );
+      return;
+    }
+
+    // Validación básica de horas
+    final double inicio = _horaInicio.hour + _horaInicio.minute / 60.0;
+    final double fin = _horaFin.hour + _horaFin.minute / 60.0;
+    if (fin <= inicio) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("La hora de fin debe ser después del inicio"),
+        ),
       );
       return;
     }
@@ -139,7 +148,6 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
     try {
       final db = FirebaseFirestore.instance;
 
-      // Armamos el objeto
       final data = {
         'nombre': _nombreController.text.trim(),
         'grupo': _grupoController.text.trim(),
@@ -152,7 +160,6 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
         'alumnos': _alumnosSeleccionadosIds
             .map((id) => db.collection('usuario').doc(id))
             .toList(),
-        // Si es nueva, inicializamos contador, si no, no lo tocamos (o lo mandamos igual si quieres resetear)
         if (widget.claseId == null) 'totalClasesDictadas': 0,
       };
 
@@ -166,7 +173,7 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Clase guardada correctamente"),
+            content: Text("Clase guardada"),
             backgroundColor: Colors.green,
           ),
         );
@@ -188,7 +195,7 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
       padding: EdgeInsets.only(bottom: bottomInset),
       child: SingleChildScrollView(
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
@@ -206,10 +213,14 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   child: Container(
                     width: 40,
                     height: 4,
-                    color: Colors.grey[300],
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
+
                 Text(
                   widget.claseId == null ? "Nueva Clase" : "Editar Clase",
                   style: const TextStyle(
@@ -219,34 +230,34 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   ),
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
-                // 1. NOMBRE Y GRUPO
+                // 1. NOMBRE Y GRUPO (Sin iconos)
                 Row(
                   children: [
                     Expanded(
                       flex: 2,
                       child: TextFormField(
                         controller: _nombreController,
-                        decoration: _inputDeco("Materia", Icons.book),
-                        validator: (v) => v!.isEmpty ? "Falta nombre" : null,
+                        decoration: _inputDeco("Materia"),
+                        validator: (v) => v!.isEmpty ? "Requerido" : null,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       flex: 1,
                       child: TextFormField(
                         controller: _grupoController,
-                        decoration: _inputDeco("Grupo", Icons.group_work),
-                        validator: (v) => v!.isEmpty ? "Falta" : null,
+                        decoration: _inputDeco("Grupo"),
+                        validator: (v) => v!.isEmpty ? "Requerido" : null,
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 16),
 
-                // 2. SELECTORES (DOCENTE, AULA, PERIODO)
+                // 2. SELECTORES (Sin iconos, Docente sin email)
                 _buildDropdownStream(
                   "Docente",
                   'usuario',
@@ -254,7 +265,8 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   (val) => setState(() => _selectedProfesorId = val),
                   filtroRol: 'docente',
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+
                 _buildDropdownStream(
                   "Aula",
                   'aulas',
@@ -262,7 +274,8 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   (val) => setState(() => _selectedAulaId = val),
                   campoNombre: 'aula',
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+
                 _buildDropdownStream(
                   "Periodo",
                   'periodos',
@@ -271,46 +284,71 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   campoNombre: 'periodo',
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
                 // 3. HORARIOS
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child: OutlinedButton(
                         onPressed: () => _selectTime(true),
-                        icon: const Icon(Icons.access_time),
-                        label: Text("Inicio: ${_formatTime(_horaInicio)}"),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          "Inicio: ${_formatTime(_horaInicio)}",
+                          style: const TextStyle(color: Colors.black87),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child: OutlinedButton(
                         onPressed: () => _selectTime(false),
-                        icon: const Icon(Icons.access_time_filled),
-                        label: Text("Fin: ${_formatTime(_horaFin)}"),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          "Fin: ${_formatTime(_horaFin)}",
+                          style: const TextStyle(color: Colors.black87),
+                        ),
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
-                // 4. DÍAS DE LA SEMANA
+                // 4. DÍAS DE LA SEMANA (Incluye Sábado)
                 const Text(
                   "Días de clase:",
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
+                const SizedBox(height: 8),
                 Wrap(
-                  spacing: 5,
-                  children: List.generate(5, (index) {
-                    int dia = index + 1; // 1=Lunes
+                  spacing: 8,
+                  children: List.generate(6, (index) {
+                    // Aumentado a 6 para incluir Sábado
+                    int dia = index + 1; // 1=Lunes ... 6=Sábado
                     bool isSelected = _diasSeleccionados.contains(dia);
-                    final diasNombres = ["L", "M", "M", "J", "V"];
-                    return FilterChip(
-                      label: Text(diasNombres[index]),
+                    final diasNombres = ["L", "M", "M", "J", "V", "S"];
+
+                    return ChoiceChip(
+                      label: Text(
+                        diasNombres[index],
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.black87,
+                        ),
+                      ),
                       selected: isSelected,
-                      selectedColor: const Color(0xFF3F51B5).withOpacity(0.3),
+                      selectedColor: const Color(0xFF3F51B5),
+                      backgroundColor: Colors.grey[100],
                       onSelected: (selected) {
                         setState(() {
                           if (selected)
@@ -324,7 +362,7 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   }),
                 ),
 
-                const SizedBox(height: 15),
+                const SizedBox(height: 20),
 
                 // 5. ALUMNOS
                 ListTile(
@@ -332,22 +370,15 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                   title: Text(
                     "${_alumnosSeleccionadosIds.length} Alumnos seleccionados",
                   ),
-                  subtitle: const Text("Toca para gestionar la lista"),
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.orange.withOpacity(0.2),
-                    child: Text(
-                      "${_alumnosSeleccionadosIds.length}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange,
-                      ),
-                    ),
+                  subtitle: const Text(
+                    "Toca para añadir/quitar alumnos",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: _mostrarSelectorAlumnos,
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // BOTÓN GUARDAR
                 SizedBox(
@@ -362,7 +393,14 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
                       ),
                     ),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
                         : const Text(
                             "GUARDAR CLASE",
                             style: TextStyle(
@@ -381,17 +419,19 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
     );
   }
 
-  // Helper para Inputs
-  InputDecoration _inputDeco(String label, IconData icon) {
+  // Helper limpio para Inputs (Sin iconos)
+  InputDecoration _inputDeco(String label) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, size: 20),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ), // Padding más cómodo
     );
   }
 
-  // Helper para Dropdowns conectados a Firebase
+  // Helper para Dropdowns conectados a Firebase (Solo nombre, sin iconos)
   Widget _buildDropdownStream(
     String label,
     String collection,
@@ -407,14 +447,15 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
       stream: query.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData)
-          return const LinearProgressIndicator(minHeight: 2);
+          return const SizedBox(
+            height: 55,
+            child: Center(child: LinearProgressIndicator()),
+          );
 
-        // Items del dropdown
         List<DropdownMenuItem<String>> items = snapshot.data!.docs.map((doc) {
           final data = doc.data() as Map<String, dynamic>;
+          // CORRECCIÓN: Solo el nombre, sin email ni paréntesis extra
           String texto = data[campoNombre] ?? '---';
-          // Para usuarios, añadimos el email para distinguir si hay nombres iguales
-          if (collection == 'usuario') texto += " (${data['email'] ?? ''})";
 
           return DropdownMenuItem<String>(
             value: doc.id,
@@ -426,8 +467,12 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
           value: currentValue,
           items: items,
           onChanged: onChanged,
-          decoration: _inputDeco(label, Icons.arrow_drop_down_circle_outlined),
+          decoration: _inputDeco(label),
+          // Usa la decoración sin iconos
           isExpanded: true,
+          icon: const Icon(
+            Icons.arrow_drop_down,
+          ), // Flecha discreta a la derecha
         );
       },
     );
@@ -435,7 +480,7 @@ class _ManageClaseModalState extends State<ManageClaseModal> {
 }
 
 // ----------------------------------------------------------------------
-// WIDGET INTERNO: SELECTOR DE ALUMNOS (CON BÚSQUEDA)
+// WIDGET INTERNO: SELECTOR DE ALUMNOS (SE MANTIENE IGUAL DE FUNCIONAL)
 // ----------------------------------------------------------------------
 class _AlumnosSelector extends StatefulWidget {
   final List<String> seleccionadosIniciales;
@@ -475,16 +520,28 @@ class _AlumnosSelectorState extends State<_AlumnosSelector> {
       ),
       child: Column(
         children: [
-          const Text(
-            "Seleccionar Alumnos",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Seleccionar Alumnos",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           TextField(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: "Buscar por nombre...",
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
             ),
             onChanged: (val) => setState(() => _busqueda = val.toLowerCase()),
           ),
@@ -499,7 +556,6 @@ class _AlumnosSelectorState extends State<_AlumnosSelector> {
                 if (!snapshot.hasData)
                   return const Center(child: CircularProgressIndicator());
 
-                // Filtrado local por búsqueda (Firestore no tiene 'contains' nativo eficiente para texto simple)
                 final docs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final nombre = (data['nombre'] ?? '')
@@ -507,6 +563,11 @@ class _AlumnosSelectorState extends State<_AlumnosSelector> {
                       .toLowerCase();
                   return nombre.contains(_busqueda);
                 }).toList();
+
+                if (docs.isEmpty)
+                  return const Center(
+                    child: Text("No hay alumnos que coincidan"),
+                  );
 
                 return ListView.builder(
                   itemCount: docs.length,
@@ -517,9 +578,13 @@ class _AlumnosSelectorState extends State<_AlumnosSelector> {
 
                     return CheckboxListTile(
                       title: Text(data['nombre'] ?? 'Sin nombre'),
-                      subtitle: Text(data['email'] ?? ''),
+                      subtitle: Text(
+                        data['email'] ?? '',
+                        style: const TextStyle(fontSize: 12),
+                      ),
                       value: isSelected,
                       activeColor: const Color(0xFF3F51B5),
+                      contentPadding: EdgeInsets.zero,
                       onChanged: (val) {
                         setState(() {
                           if (val == true) {
@@ -537,6 +602,7 @@ class _AlumnosSelectorState extends State<_AlumnosSelector> {
           ),
           SizedBox(
             width: double.infinity,
+            height: 50,
             child: ElevatedButton(
               onPressed: () {
                 widget.onConfirm(_tempSeleccionados);
@@ -544,10 +610,16 @@ class _AlumnosSelectorState extends State<_AlumnosSelector> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3F51B5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: Text(
                 "CONFIRMAR (${_tempSeleccionados.length})",
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
