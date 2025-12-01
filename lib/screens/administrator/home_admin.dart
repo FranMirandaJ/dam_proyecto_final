@@ -10,6 +10,7 @@ import 'admin_clases.dart';
 
 import 'widgets/create_teacher_modal.dart';
 import 'widgets/manage_aula_modal.dart';
+import 'widgets/manage_periodo_modal.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({Key? key}) : super(key: key);
@@ -126,6 +127,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               backgroundColor: Colors.transparent,
               builder: (context) =>
                   const ManageAulaModal(), // Sin argumentos = Crear
+            );
+          } else if (_currentIndex == 2) {
+            // PERIODOS
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (context) => const ManagePeriodoModal(), // Crear nuevo
             );
           } else {
             // Otras pestañas...
