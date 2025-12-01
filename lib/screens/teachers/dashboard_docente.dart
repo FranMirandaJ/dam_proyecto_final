@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
+import 'package:proyecto_final/screens/LoginRegister.dart';
+import 'package:proyecto_final/services/auth.dart';
 
 class TeacherDashboardScreen extends StatefulWidget {
   const TeacherDashboardScreen({Key? key}) : super(key: key);
@@ -248,6 +250,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Columna de Bienvenida (se mantiene igual)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -266,23 +269,61 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                       ),
                     ],
                   ),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        user.name.isNotEmpty ? user.name.substring(0, 2).toUpperCase() : "PR",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
+                  // Nuevo Row para agrupar Avatar y Botón de Logout
+                  Row(
+                    children: [
+                      // Avatar del Profesor
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            user.name.isNotEmpty ? user.name
+                                .substring(0, 2)
+                                .toUpperCase() : "PR",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 10), // Espacio entre avatar y botón
+                      // Botón de Logout
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.logout_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          tooltip: "Cerrar sesión",
+                          onPressed: () {
+                            // Se inicia el cierre de sesión, pero no se espera (no await).
+                            Auth().signOut(context);
+                            Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginRegister()),
+                            (Route<dynamic> route) => false,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

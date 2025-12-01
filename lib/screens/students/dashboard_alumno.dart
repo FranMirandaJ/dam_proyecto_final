@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
+import 'package:proyecto_final/services/auth.dart';
+import 'package:proyecto_final/screens/LoginRegister.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   const StudentDashboardScreen({Key? key}) : super(key: key);
@@ -55,7 +57,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     }
 
     if (nextRefreshTime != null) {
-      final durationUntilRefresh = nextRefreshTime.difference(now) + const Duration(seconds: 30);
+      final durationUntilRefresh =
+          nextRefreshTime.difference(now) + const Duration(seconds: 30);
       _timer = Timer(durationUntilRefresh, () {
         if (mounted) {
           setState(() {});
@@ -115,20 +118,28 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
           stream: FirebaseFirestore.instance
               .collection('clase')
               .where(
-              'alumnos',
-              arrayContains: FirebaseFirestore.instance.doc('usuario/${user.uid}')
-          )
+                'alumnos',
+                arrayContains: FirebaseFirestore.instance.doc(
+                  'usuario/${user.uid}',
+                ),
+              )
               .snapshots(),
 
           builder: (context, snapshotClases) {
-            if (snapshotClases.hasError) return const Center(child: Text("Error cargando clases"));
-            if (!snapshotClases.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
+            if (snapshotClases.hasError)
+              return const Center(child: Text("Error cargando clases"));
+            if (!snapshotClases.hasData)
+              return const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              );
 
             final clasesDocsRaw = snapshotClases.data!.docs;
 
             // --- CORRECCIÓN: ORDENAMIENTO MANUAL POR HORA ---
             // Creamos una copia ordenada de la lista para mostrarla
-            final List<QueryDocumentSnapshot> sortedDocs = List.from(clasesDocsRaw);
+            final List<QueryDocumentSnapshot> sortedDocs = List.from(
+              clasesDocsRaw,
+            );
             sortedDocs.sort((a, b) {
               final dataA = a.data() as Map<String, dynamic>;
               final dataB = b.data() as Map<String, dynamic>;
@@ -157,235 +168,357 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
             // 2. STREAM DE TODAS MIS ASISTENCIAS
             return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('asistencia')
-                    .where('alumnoId', isEqualTo: FirebaseFirestore.instance.doc('usuario/${user.uid}'))
-                    .snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('asistencia')
+                  .where(
+                    'alumnoId',
+                    isEqualTo: FirebaseFirestore.instance.doc(
+                      'usuario/${user.uid}',
+                    ),
+                  )
+                  .snapshots(),
 
-                builder: (context, snapshotAsistencias) {
-                  List<QueryDocumentSnapshot> misAsistenciasDocs = [];
-                  if (snapshotAsistencias.hasData) {
-                    misAsistenciasDocs = snapshotAsistencias.data!.docs;
-                  }
+              builder: (context, snapshotAsistencias) {
+                List<QueryDocumentSnapshot> misAsistenciasDocs = [];
+                if (snapshotAsistencias.hasData) {
+                  misAsistenciasDocs = snapshotAsistencias.data!.docs;
+                }
 
-                  int cantidadAsistencias = misAsistenciasDocs.length;
+                int cantidadAsistencias = misAsistenciasDocs.length;
 
-                  // --- CÁLCULO DE ESTADÍSTICAS FINALES ---
-                  int faltas = 0;
-                  if (totalClasesEsperadas >= cantidadAsistencias) {
-                    faltas = totalClasesEsperadas - cantidadAsistencias;
-                  }
+                // --- CÁLCULO DE ESTADÍSTICAS FINALES ---
+                int faltas = 0;
+                if (totalClasesEsperadas >= cantidadAsistencias) {
+                  faltas = totalClasesEsperadas - cantidadAsistencias;
+                }
 
-                  double porcentaje = 100.0;
-                  if (totalClasesEsperadas > 0) {
-                    porcentaje = (cantidadAsistencias / totalClasesEsperadas) * 100;
-                  }
+                double porcentaje = 100.0;
+                if (totalClasesEsperadas > 0) {
+                  porcentaje =
+                      (cantidadAsistencias / totalClasesEsperadas) * 100;
+                }
 
-                  String porcentajeStr = porcentaje.toStringAsFixed(0);
+                String porcentajeStr = porcentaje.toStringAsFixed(0);
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // --- ENCABEZADO ---
-                      Padding(
-                        padding: const EdgeInsets.all(24.0),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // --- ENCABEZADO ---
+                    Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Bienvenido de nuevo",
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    user.name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                // Este Row agrupa los elementos de la derecha
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        user.name.isNotEmpty
+                                            ? user.name
+                                                  .substring(0, 2)
+                                                  .toUpperCase()
+                                            : "US",
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10), // Separador
+                                  // Botón de Logout Integrado
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.1),
+                                      ),
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.logout_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                      tooltip: "Cerrar sesión",
+                                      onPressed: () async {
+                                        await Auth().signOut(context);
+                                        // Redirige a la pantalla de login y elimina las rutas anteriores
+                                        Navigator.pushAndRemoveUntil(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const LoginRegister(),
+                                          ),
+                                          (Route<dynamic> route) => false,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 30),
+                          // FILA DE ESTADÍSTICAS
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildStatItem("$porcentajeStr%", "Asistencia"),
+                              _buildStatItem(
+                                "$totalClasesEsperadas",
+                                "Clases Totales",
+                              ),
+                              _buildStatItem("$faltas", "Faltas"),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // --- LISTA DE CLASES ---
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: backgroundWhite,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(30),
+                            topRight: Radius.circular(30),
+                          ),
+                        ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      "Bienvenido de nuevo",
-                                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      user.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      user.name.isNotEmpty
-                                          ? user.name.substring(0, 2).toUpperCase()
-                                          : "US",
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                30,
+                                24,
+                                20,
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Mis Materias",
+                                    style: TextStyle(
+                                      color: textDark,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const Icon(
+                                    Icons.calendar_today,
+                                    size: 16,
+                                    color: Colors.grey,
+                                  ),
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 30),
 
-                            // FILA DE ESTADÍSTICAS
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                _buildStatItem("$porcentajeStr%", "Asistencia"),
-                                _buildStatItem("$totalClasesEsperadas", "Clases Totales"),
-                                _buildStatItem("$faltas", "Faltas"),
-                              ],
+                            // Lista de Materias (USAMOS sortedDocs)
+                            Expanded(
+                              child: RefreshIndicator(
+                                onRefresh: _handleRefresh,
+                                color: primaryBlue,
+                                child: sortedDocs.isEmpty
+                                    ? ListView(
+                                        children: const [
+                                          SizedBox(height: 100),
+                                          Center(
+                                            child: Text(
+                                              "No tienes materias inscritas.",
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : ListView.builder(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 24,
+                                        ),
+                                        physics:
+                                            const AlwaysScrollableScrollPhysics(),
+                                        itemCount: sortedDocs.length,
+                                        // Usamos la lista ordenada
+                                        itemBuilder: (context, index) {
+                                          final data =
+                                              sortedDocs[index].data()
+                                                  as Map<String, dynamic>;
+                                          final classDocRef =
+                                              sortedDocs[index].reference;
+
+                                          final String materia =
+                                              data['nombre'] ?? 'Sin nombre';
+
+                                          // Manejo del aula
+                                          String aulaRaw =
+                                              data['aula']?.toString() ??
+                                              'Sin aula';
+                                          String salonDisplay =
+                                              aulaRaw.contains('/')
+                                              ? "Aula Asignada"
+                                              : aulaRaw;
+
+                                          final String horaInicioStr =
+                                              data['hora'] ?? '00:00';
+                                          final String? horaFinRaw =
+                                              data['horaFin'];
+
+                                          final colors = [
+                                            const Color(0xFF00C853),
+                                            const Color(0xFF2563EB),
+                                            const Color(0xFFFFA000),
+                                            const Color(0xFFE91E63),
+                                          ];
+                                          final color =
+                                              colors[index % colors.length];
+
+                                          // --- LÓGICA DE ESTADO INDIVIDUAL ---
+                                          final now = DateTime.now();
+                                          final startOfDay = DateTime(
+                                            now.year,
+                                            now.month,
+                                            now.day,
+                                          );
+                                          final endOfDay = DateTime(
+                                            now.year,
+                                            now.month,
+                                            now.day,
+                                            23,
+                                            59,
+                                            59,
+                                          );
+
+                                          // Buscamos EN MEMORIA si ya hay asistencia hoy
+                                          bool tieneAsistenciaHoy =
+                                              misAsistenciasDocs.any((
+                                                asistDoc,
+                                              ) {
+                                                final asistData =
+                                                    asistDoc.data()
+                                                        as Map<String, dynamic>;
+                                                final docRefClase =
+                                                    asistData['claseId'];
+                                                final Timestamp? fechaTs =
+                                                    asistData['fecha'];
+
+                                                if (docRefClase ==
+                                                        classDocRef &&
+                                                    fechaTs != null) {
+                                                  final fecha = fechaTs
+                                                      .toDate();
+                                                  return fecha.isAfter(
+                                                        startOfDay,
+                                                      ) &&
+                                                      fecha.isBefore(endOfDay);
+                                                }
+                                                return false;
+                                              });
+
+                                          int estadoActual = 2; // Pendiente
+                                          bool enCurso = false;
+
+                                          if (tieneAsistenciaHoy) {
+                                            estadoActual =
+                                                1; // Asistencia (Check)
+                                          } else {
+                                            // Validación de Hora
+                                            final currentTime = TimeOfDay.now();
+                                            final double currentDouble =
+                                                currentTime.hour +
+                                                currentTime.minute / 60.0;
+                                            final double startDouble =
+                                                _timeStringToDouble(
+                                                  horaInicioStr,
+                                                );
+
+                                            double endDouble = 0.0;
+                                            if (horaFinRaw != null) {
+                                              endDouble = _timeStringToDouble(
+                                                horaFinRaw,
+                                              );
+                                            } else if (startDouble > 0) {
+                                              endDouble = startDouble + 1.0;
+                                            }
+
+                                            if (startDouble > 0) {
+                                              if (currentDouble > endDouble) {
+                                                estadoActual =
+                                                    0; // Falta visual
+                                              } else if (currentDouble >=
+                                                      startDouble &&
+                                                  currentDouble <= endDouble) {
+                                                estadoActual = 2;
+                                                enCurso = true; // En curso
+                                              }
+                                            }
+                                          }
+
+                                          return _buildClassCard(
+                                            time: horaInicioStr,
+                                            endTime: "",
+                                            subject: materia,
+                                            room: salonDisplay,
+                                            status: estadoActual,
+                                            isInProgress: enCurso,
+                                            accentColor: color,
+                                          );
+                                        },
+                                      ),
+                              ),
                             ),
+
+                            const SizedBox(height: 100),
                           ],
                         ),
                       ),
-
-                      const SizedBox(height: 10),
-
-                      // --- LISTA DE CLASES ---
-                      Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: backgroundWhite,
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(30),
-                              topRight: Radius.circular(30),
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "Mis Materias",
-                                      style: TextStyle(
-                                        color: textDark,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
-                                  ],
-                                ),
-                              ),
-
-                              // Lista de Materias (USAMOS sortedDocs)
-                              Expanded(
-                                child: RefreshIndicator(
-                                  onRefresh: _handleRefresh,
-                                  color: primaryBlue,
-                                  child: sortedDocs.isEmpty
-                                      ? ListView(
-                                    children: const [
-                                      SizedBox(height: 100),
-                                      Center(child: Text("No tienes materias inscritas.", style: TextStyle(color: Colors.grey))),
-                                    ],
-                                  )
-                                      : ListView.builder(
-                                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                                    physics: const AlwaysScrollableScrollPhysics(),
-                                    itemCount: sortedDocs.length, // Usamos la lista ordenada
-                                    itemBuilder: (context, index) {
-                                      final data = sortedDocs[index].data() as Map<String, dynamic>;
-                                      final classDocRef = sortedDocs[index].reference;
-
-                                      final String materia = data['nombre'] ?? 'Sin nombre';
-
-                                      // Manejo del aula
-                                      String aulaRaw = data['aula']?.toString() ?? 'Sin aula';
-                                      String salonDisplay = aulaRaw.contains('/') ? "Aula Asignada" : aulaRaw;
-
-                                      final String horaInicioStr = data['hora'] ?? '00:00';
-                                      final String? horaFinRaw = data['horaFin'];
-
-                                      final colors = [
-                                        const Color(0xFF00C853), const Color(0xFF2563EB),
-                                        const Color(0xFFFFA000), const Color(0xFFE91E63),
-                                      ];
-                                      final color = colors[index % colors.length];
-
-                                      // --- LÓGICA DE ESTADO INDIVIDUAL ---
-                                      final now = DateTime.now();
-                                      final startOfDay = DateTime(now.year, now.month, now.day);
-                                      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
-                                      // Buscamos EN MEMORIA si ya hay asistencia hoy
-                                      bool tieneAsistenciaHoy = misAsistenciasDocs.any((asistDoc) {
-                                        final asistData = asistDoc.data() as Map<String, dynamic>;
-                                        final docRefClase = asistData['claseId'];
-                                        final Timestamp? fechaTs = asistData['fecha'];
-
-                                        if (docRefClase == classDocRef && fechaTs != null) {
-                                          final fecha = fechaTs.toDate();
-                                          return fecha.isAfter(startOfDay) && fecha.isBefore(endOfDay);
-                                        }
-                                        return false;
-                                      });
-
-                                      int estadoActual = 2; // Pendiente
-                                      bool enCurso = false;
-
-                                      if (tieneAsistenciaHoy) {
-                                        estadoActual = 1; // Asistencia (Check)
-                                      } else {
-                                        // Validación de Hora
-                                        final currentTime = TimeOfDay.now();
-                                        final double currentDouble = currentTime.hour + currentTime.minute / 60.0;
-                                        final double startDouble = _timeStringToDouble(horaInicioStr);
-
-                                        double endDouble = 0.0;
-                                        if (horaFinRaw != null) {
-                                          endDouble = _timeStringToDouble(horaFinRaw);
-                                        } else if (startDouble > 0) {
-                                          endDouble = startDouble + 1.0;
-                                        }
-
-                                        if (startDouble > 0) {
-                                          if (currentDouble > endDouble) {
-                                            estadoActual = 0; // Falta visual
-                                          } else if (currentDouble >= startDouble && currentDouble <= endDouble) {
-                                            estadoActual = 2;
-                                            enCurso = true; // En curso
-                                          }
-                                        }
-                                      }
-
-                                      return _buildClassCard(
-                                        time: horaInicioStr,
-                                        endTime: "",
-                                        subject: materia,
-                                        room: salonDisplay,
-                                        status: estadoActual,
-                                        isInProgress: enCurso,
-                                        accentColor: color,
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 100),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -399,7 +532,11 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
       children: [
         Text(
           value,
-          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -447,24 +584,32 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20,
+                  horizontal: 16,
+                ),
                 child: Row(
                   children: [
                     time != "00:00"
                         ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          time,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Color(0xFF1F222E)),
-                        ),
-                      ],
-                    )
-                        : const Icon(Icons.access_time, size: 20, color: Colors.grey),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                time,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Color(0xFF1F222E),
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(
+                            Icons.access_time,
+                            size: 20,
+                            color: Colors.grey,
+                          ),
                     const SizedBox(width: 20),
                     Expanded(
                       child: Column(
@@ -473,15 +618,18 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           Text(
                             subject,
                             style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Color(0xFF1F222E)),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Color(0xFF1F222E),
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             room,
                             style: const TextStyle(
-                                color: Colors.grey, fontSize: 14),
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
                           ),
                         ],
                       ),
@@ -491,9 +639,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFF00C853), width: 2),
+                          border: Border.all(
+                            color: const Color(0xFF00C853),
+                            width: 2,
+                          ),
                         ),
-                        child: const Icon(Icons.check, color: Color(0xFF00C853), size: 18),
+                        child: const Icon(
+                          Icons.check,
+                          color: Color(0xFF00C853),
+                          size: 18,
+                        ),
                       ),
                     ] else if (status == 0) ...[
                       Container(
@@ -502,11 +657,18 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.red, width: 2),
                         ),
-                        child: const Icon(Icons.close, color: Colors.red, size: 18),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.red,
+                          size: 18,
+                        ),
                       ),
                     ] else ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: isInProgress
                               ? const Color(0xFFE8F5E9)

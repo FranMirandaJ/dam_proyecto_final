@@ -143,10 +143,6 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
         title: Text("Notificaciones Docente", style: TextStyle(color: textDark, fontWeight: FontWeight.bold, fontSize: 20)),
         centerTitle: true,
       ),

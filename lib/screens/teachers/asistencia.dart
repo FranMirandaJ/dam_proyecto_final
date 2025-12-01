@@ -139,13 +139,12 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
       backgroundColor: Color(0xfff7f8fa),
       appBar: AppBar(
         title: Text(
-          "Historial Asistencias",
-          style: TextStyle(color: Colors.black),
+          "Historial asistencias",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: Icon(Icons.arrow_back, color: Colors.black),
       ),
       body: isLoading
           ? Center(child: CircularProgressIndicator())
