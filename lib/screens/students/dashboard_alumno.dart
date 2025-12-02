@@ -114,16 +114,15 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
       backgroundColor: primaryBlue,
       body: SafeArea(
         bottom: false,
-        // 1. STREAM DE CLASES
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('clase')
               .where(
-            'alumnos',
-            arrayContains: FirebaseFirestore.instance.doc(
-              'usuario/${user.uid}',
-            ),
-          )
+                'alumnos',
+                arrayContains: FirebaseFirestore.instance.doc(
+                  'usuario/${user.uid}',
+                ),
+              )
               .snapshots(),
 
           builder: (context, snapshotClases) {
@@ -136,7 +135,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
             final clasesDocsRaw = snapshotClases.data!.docs;
 
-            // ORDENAMIENTO MANUAL
             final List<QueryDocumentSnapshot> sortedDocs = List.from(
               clasesDocsRaw,
             );
@@ -148,7 +146,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
               return tA.compareTo(tB);
             });
 
-            // CÁLCULO TOTAL CLASES DICTADAS
             int totalClasesEsperadas = 0;
             for (var doc in sortedDocs) {
               final data = doc.data() as Map<String, dynamic>;
@@ -162,16 +159,15 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
               });
             }
 
-            // 2. STREAM DE ASISTENCIAS
             return StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('asistencia')
                   .where(
-                'alumnoId',
-                isEqualTo: FirebaseFirestore.instance.doc(
-                  'usuario/${user.uid}',
-                ),
-              )
+                    'alumnoId',
+                    isEqualTo: FirebaseFirestore.instance.doc(
+                      'usuario/${user.uid}',
+                    ),
+                  )
                   .snapshots(),
 
               builder: (context, snapshotAsistencias) {
@@ -182,7 +178,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
                 int cantidadAsistencias = misAsistenciasDocs.length;
 
-                // --- LÓGICA DE CORRECCIÓN DE FALTAS ---
                 int clasesEnCursoSinAsistencia = 0;
                 final now = DateTime.now();
                 final currentDouble = now.hour + now.minute / 60.0;
@@ -231,7 +226,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   }
                 }
 
-                // CÁLCULO FINAL
                 int faltasCalculadas =
                     totalClasesEsperadas - cantidadAsistencias;
                 int faltasReales =
@@ -249,15 +243,14 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     porcentaje = 100.0;
                   }
                 }
-                if(porcentaje > 100) porcentaje = 100;
-                if(porcentaje < 0) porcentaje = 0;
+                if (porcentaje > 100) porcentaje = 100;
+                if (porcentaje < 0) porcentaje = 0;
 
                 String porcentajeStr = porcentaje.toStringAsFixed(0);
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // --- ENCABEZADO ---
                     Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Column(
@@ -266,7 +259,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              // --- CORRECCIÓN DEL OVERFLOW ---
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,14 +278,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                         fontSize: 22,
                                         fontWeight: FontWeight.bold,
                                       ),
-                                      overflow: TextOverflow.ellipsis, // Corta con ...
-                                      maxLines: 1, // Máximo 1 línea
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 16), // Espacio
-                              // -------------------------------
+                              const SizedBox(width: 16),
                               Row(
                                 children: [
                                   Container(
@@ -307,8 +298,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                       child: Text(
                                         user.name.isNotEmpty
                                             ? user.name
-                                            .substring(0, 2)
-                                            .toUpperCase()
+                                                  .substring(0, 2)
+                                                  .toUpperCase()
                                             : "US",
                                         style: const TextStyle(
                                           color: Colors.white,
@@ -342,9 +333,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                           context,
                                           MaterialPageRoute(
                                             builder: (context) =>
-                                            const LoginRegister(),
+                                                const LoginRegister(),
                                           ),
-                                              (Route<dynamic> route) => false,
+                                          (Route<dynamic> route) => false,
                                         );
                                       },
                                     ),
@@ -372,7 +363,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
                     const SizedBox(height: 10),
 
-                    // --- LISTA DE CLASES ---
                     Expanded(
                       child: Container(
                         width: double.infinity,
@@ -394,7 +384,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               ),
                               child: Row(
                                 mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     "Mis Materias",
@@ -419,152 +409,210 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 color: primaryBlue,
                                 child: sortedDocs.isEmpty
                                     ? ListView(
-                                  children: const [
-                                    SizedBox(height: 100),
-                                    Center(
-                                      child: Text(
-                                        "No tienes materias inscritas.",
-                                        style: TextStyle(
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                )
+                                        children: const [
+                                          SizedBox(height: 100),
+                                          Center(
+                                            child: Text(
+                                              "No tienes materias inscritas.",
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      )
                                     : ListView.builder(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                  ),
-                                  physics:
-                                  const AlwaysScrollableScrollPhysics(),
-                                  itemCount: sortedDocs.length,
-                                  itemBuilder: (context, index) {
-                                    final data =
-                                    sortedDocs[index].data()
-                                    as Map<String, dynamic>;
-                                    final classDocRef =
-                                        sortedDocs[index].reference;
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 24,
+                                        ),
+                                        physics:
+                                            const AlwaysScrollableScrollPhysics(),
+                                        itemCount: sortedDocs.length,
+                                        itemBuilder: (context, index) {
+                                          final data =
+                                              sortedDocs[index].data()
+                                                  as Map<String, dynamic>;
+                                          final classDocRef =
+                                              sortedDocs[index].reference;
 
-                                    final String materia =
-                                        data['nombre'] ?? 'Sin nombre';
+                                          final String materia =
+                                              data['nombre'] ?? 'Sin nombre';
 
-                                    final dynamic aulaField = data['aula'];
+                                          final dynamic aulaField =
+                                              data['aula'];
+                                          final dynamic profesorField =
+                                              data['profesor'];
 
-                                    final String horaInicioStr =
-                                        data['hora'] ?? '00:00';
-                                    final String? horaFinRaw =
-                                    data['horaFin'];
+                                          final String horaInicioStr =
+                                              data['hora'] ?? '00:00';
+                                          final String? horaFinRaw =
+                                              data['horaFin'];
 
-                                    final colors = [
-                                      const Color(0xFF00C853),
-                                      const Color(0xFF2563EB),
-                                      const Color(0xFFFFA000),
-                                      const Color(0xFFE91E63),
-                                    ];
-                                    final color =
-                                    colors[index % colors.length];
+                                          final colors = [
+                                            const Color(0xFF00C853),
+                                            const Color(0xFF2563EB),
+                                            const Color(0xFFFFA000),
+                                            const Color(0xFFE91E63),
+                                          ];
+                                          final color =
+                                              colors[index % colors.length];
 
-                                    // FutureBuilder para resolver el nombre del Aula
-                                    return FutureBuilder<DocumentSnapshot>(
-                                      future: (aulaField is DocumentReference) ? aulaField.get() : null,
-                                      builder: (context, snapshotAula) {
-                                        String nombreAula = "Sin asignar";
-                                        if (aulaField is String) {
-                                          nombreAula = aulaField;
-                                        } else if (snapshotAula.hasData && snapshotAula.data != null && snapshotAula.data!.exists) {
-                                          final aulaData = snapshotAula.data!.data() as Map<String, dynamic>;
-                                          nombreAula = aulaData['aula'] ?? "Aula ??";
-                                        }
+                                          // FutureBuilder para Aula y Profesor
+                                          Future<DocumentSnapshot?> futureAula =
+                                              (aulaField is DocumentReference)
+                                              ? aulaField.get()
+                                              : Future.value(null);
 
-                                        final now = DateTime.now();
-                                        final startOfDay = DateTime(
-                                          now.year,
-                                          now.month,
-                                          now.day,
-                                        );
-                                        final endOfDay = DateTime(
-                                          now.year,
-                                          now.month,
-                                          now.day,
-                                          23,
-                                          59,
-                                          59,
-                                        );
+                                          Future<DocumentSnapshot?>
+                                          futureProfesor =
+                                              (profesorField
+                                                  is DocumentReference)
+                                              ? profesorField.get()
+                                              : Future.value(null);
 
-                                        bool tieneAsistenciaHoy =
-                                        misAsistenciasDocs.any((
-                                            asistDoc,
-                                            ) {
-                                          final asistData =
-                                          asistDoc.data()
-                                          as Map<String, dynamic>;
-                                          final docRefClase =
-                                          asistData['claseId'];
-                                          final Timestamp? fechaTs =
-                                          asistData['fecha'];
+                                          return FutureBuilder<
+                                            List<DocumentSnapshot?>
+                                          >(
+                                            future: Future.wait([
+                                              futureAula,
+                                              futureProfesor,
+                                            ]),
+                                            builder: (context, snapshotFutures) {
+                                              String nombreAula = "Sin asignar";
+                                              if (aulaField is String) {
+                                                nombreAula = aulaField;
+                                              } else if (snapshotFutures
+                                                      .hasData &&
+                                                  snapshotFutures.data![0] !=
+                                                      null &&
+                                                  snapshotFutures
+                                                      .data![0]!
+                                                      .exists) {
+                                                final aulaData =
+                                                    snapshotFutures.data![0]!
+                                                            .data()
+                                                        as Map<String, dynamic>;
+                                                nombreAula =
+                                                    aulaData['aula'] ??
+                                                    "Aula ??";
+                                              }
 
-                                          if (docRefClase ==
-                                              classDocRef &&
-                                              fechaTs != null) {
-                                            final fecha = fechaTs
-                                                .toDate();
-                                            return fecha.isAfter(
-                                              startOfDay,
-                                            ) &&
-                                                fecha.isBefore(endOfDay);
-                                          }
-                                          return false;
-                                        });
+                                              String nombreProfesor =
+                                                  "Sin profesor";
+                                              if (snapshotFutures.hasData &&
+                                                  snapshotFutures.data![1] !=
+                                                      null &&
+                                                  snapshotFutures
+                                                      .data![1]!
+                                                      .exists) {
+                                                final profeData =
+                                                    snapshotFutures.data![1]!
+                                                            .data()
+                                                        as Map<String, dynamic>;
+                                                nombreProfesor =
+                                                    profeData['nombre'] ??
+                                                    "Sin nombre";
+                                              }
 
-                                        int estadoActual = 2;
-                                        bool enCurso = false;
+                                              final now = DateTime.now();
+                                              final startOfDay = DateTime(
+                                                now.year,
+                                                now.month,
+                                                now.day,
+                                              );
+                                              final endOfDay = DateTime(
+                                                now.year,
+                                                now.month,
+                                                now.day,
+                                                23,
+                                                59,
+                                                59,
+                                              );
 
-                                        if (tieneAsistenciaHoy) {
-                                          estadoActual = 1;
-                                        } else {
-                                          final currentTime = TimeOfDay.now();
-                                          final double currentDouble =
-                                              currentTime.hour +
-                                                  currentTime.minute / 60.0;
-                                          final double startDouble =
-                                          _timeStringToDouble(
-                                            horaInicioStr,
+                                              bool tieneAsistenciaHoy =
+                                                  misAsistenciasDocs.any((
+                                                    asistDoc,
+                                                  ) {
+                                                    final asistData =
+                                                        asistDoc.data()
+                                                            as Map<
+                                                              String,
+                                                              dynamic
+                                                            >;
+                                                    final docRefClase =
+                                                        asistData['claseId'];
+                                                    final Timestamp? fechaTs =
+                                                        asistData['fecha'];
+
+                                                    if (docRefClase ==
+                                                            classDocRef &&
+                                                        fechaTs != null) {
+                                                      final fecha = fechaTs
+                                                          .toDate();
+                                                      return fecha.isAfter(
+                                                            startOfDay,
+                                                          ) &&
+                                                          fecha.isBefore(
+                                                            endOfDay,
+                                                          );
+                                                    }
+                                                    return false;
+                                                  });
+
+                                              int estadoActual = 2;
+                                              bool enCurso = false;
+
+                                              if (tieneAsistenciaHoy) {
+                                                estadoActual = 1;
+                                              } else {
+                                                final currentTime =
+                                                    TimeOfDay.now();
+                                                final double currentDouble =
+                                                    currentTime.hour +
+                                                    currentTime.minute / 60.0;
+                                                final double startDouble =
+                                                    _timeStringToDouble(
+                                                      horaInicioStr,
+                                                    );
+
+                                                double endDouble = 0.0;
+                                                if (horaFinRaw != null) {
+                                                  endDouble =
+                                                      _timeStringToDouble(
+                                                        horaFinRaw,
+                                                      );
+                                                } else if (startDouble > 0) {
+                                                  endDouble = startDouble + 1.0;
+                                                }
+
+                                                if (startDouble > 0) {
+                                                  if (currentDouble >
+                                                      endDouble) {
+                                                    estadoActual = 0; // Falta
+                                                  } else if (currentDouble >=
+                                                          startDouble &&
+                                                      currentDouble <=
+                                                          endDouble) {
+                                                    estadoActual = 2;
+                                                    enCurso = true; // En curso
+                                                  }
+                                                }
+                                              }
+
+                                              return _buildClassCard(
+                                                time: horaInicioStr,
+                                                endTime: "",
+                                                subject: materia,
+                                                room: nombreAula,
+                                                teacher: nombreProfesor,
+                                                status: estadoActual,
+                                                isInProgress: enCurso,
+                                                accentColor: color,
+                                              );
+                                            },
                                           );
-
-                                          double endDouble = 0.0;
-                                          if (horaFinRaw != null) {
-                                            endDouble = _timeStringToDouble(
-                                              horaFinRaw,
-                                            );
-                                          } else if (startDouble > 0) {
-                                            endDouble = startDouble + 1.0;
-                                          }
-
-                                          if (startDouble > 0) {
-                                            if (currentDouble > endDouble) {
-                                              estadoActual = 0; // Falta
-                                            } else if (currentDouble >=
-                                                startDouble &&
-                                                currentDouble <= endDouble) {
-                                              estadoActual = 2;
-                                              enCurso = true; // En curso
-                                            }
-                                          }
-                                        }
-
-                                        return _buildClassCard(
-                                          time: horaInicioStr,
-                                          endTime: "",
-                                          subject: materia,
-                                          room: nombreAula,
-                                          status: estadoActual,
-                                          isInProgress: enCurso,
-                                          accentColor: color,
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
+                                        },
+                                      ),
                               ),
                             ),
                             const SizedBox(height: 100),
@@ -582,7 +630,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  // --- WIDGETS AUXILIARES ---
   Widget _buildStatItem(String value, String label) {
     return Column(
       children: [
@@ -603,11 +650,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
+  // --- WIDGET ACTUALIZADO PARA MANEJAR NOMBRES LARGOS ---
   Widget _buildClassCard({
     required String time,
     required String endTime,
     required String subject,
     required String room,
+    required String teacher,
     required int status,
     bool isInProgress = false,
     required Color accentColor,
@@ -648,25 +697,26 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   children: [
                     time != "00:00"
                         ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          time,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Color(0xFF1F222E),
-                          ),
-                        ),
-                      ],
-                    )
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                time,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Color(0xFF1F222E),
+                                ),
+                              ),
+                            ],
+                          )
                         : const Icon(
-                      Icons.access_time,
-                      size: 20,
-                      color: Colors.grey,
-                    ),
+                            Icons.access_time,
+                            size: 20,
+                            color: Colors.grey,
+                          ),
                     const SizedBox(width: 20),
+                    // --- AQUÍ ESTÁ LA MAGIA PARA NOMBRES LARGOS ---
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -678,18 +728,36 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               fontSize: 16,
                               color: Color(0xFF1F222E),
                             ),
+                            maxLines: 1, // Limita a una línea
+                            overflow:
+                                TextOverflow.ellipsis, // Pone ... si no cabe
+                          ),
+                          const SizedBox(height: 4), // Espaciado
+                          Text(
+                            teacher,
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1, // Limita nombre profesor
+                            overflow:
+                                TextOverflow.ellipsis, // ... si es muy largo
                           ),
                           const SizedBox(height: 4),
                           Text(
                             room,
                             style: const TextStyle(
                               color: Colors.grey,
-                              fontSize: 14,
+                              fontSize: 12,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8), // Espacio extra antes del icono
                     if (status == 1) ...[
                       Container(
                         padding: const EdgeInsets.all(4),
