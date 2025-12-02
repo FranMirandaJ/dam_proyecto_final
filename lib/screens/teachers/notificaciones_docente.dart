@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart'; // Asegúrate de tener intl: ^0.18.0
+import 'package:intl/intl.dart';
 
 class TeacherNotificationScreen extends StatefulWidget {
   const TeacherNotificationScreen({Key? key}) : super(key: key);
@@ -11,22 +11,18 @@ class TeacherNotificationScreen extends StatefulWidget {
 }
 
 class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
-  // Colores del tema
   final Color primaryGreen = const Color(0xFF00C853);
   final Color textDark = const Color(0xFF1F222E);
   final Color textGrey = const Color(0xFF757575);
   final Color bgLight = const Color(0xFFF5F6FA);
 
-  // Controladores
   final TextEditingController _tituloController = TextEditingController();
   final TextEditingController _cuerpoController = TextEditingController();
 
-  // Lógica de selección
   bool isAllSelected = false;
   List<String> selectedGroupIds = [];
   bool _isSending = false;
 
-  // NUEVO: Diccionario para guardar ID -> "Nombre Materia"
   Map<String, String> nombresClases = {};
 
   User? get currentUser => FirebaseAuth.instance.currentUser;
@@ -34,24 +30,17 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
   @override
   void initState() {
     super.initState();
-    // Cargamos los nombres de las materias al iniciar
     _cargarNombresClases();
   }
 
-  // NUEVO: Función para obtener los nombres reales de las clases del profe
   void _cargarNombresClases() async {
     if (currentUser == null) return;
 
     try {
-      // Referencia del profe actual
       DocumentReference refProfe = FirebaseFirestore.instance
           .collection('usuario')
           .doc(currentUser!.uid);
 
-      // Buscamos las clases donde él es el profesor
-      // (Ajusta 'profesor' o 'docenteId' según como se llame EXACTAMENTE en tu BD 'clase')
-      // Según tu imagen anterior, el campo en la colección 'clase' se llama 'profesor' o 'docenteId'
-      // Voy a asumir que usas 'profesor' o 'docenteId'. Si no carga, revisa ese nombre.
       final snapshot = await FirebaseFirestore.instance
           .collection('clase')
           .where('profesor', isEqualTo: refProfe)
@@ -61,9 +50,8 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
 
       for (var doc in snapshot.docs) {
         String nombre = doc['nombre'] ?? 'Materia';
-        String grupo = doc['grupo'] ?? ''; // Opcional: traer el grupo también
+        String grupo = doc['grupo'] ?? '';
 
-        // Guardamos: "Sistemas Programables 5A"
         tempMap[doc.id] = "$nombre $grupo".trim();
       }
 
@@ -77,7 +65,6 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
     }
   }
 
-  // Método para enviar
   Future<void> _enviarNotificacion(List<QueryDocumentSnapshot> allGroups) async {
     if (_tituloController.text.isEmpty || _cuerpoController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Escribe un título y un mensaje")));
@@ -152,7 +139,7 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- SECCIÓN 1: FORMULARIO ---
+
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -169,7 +156,7 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
                   Text("Seleccionar grupo", style: TextStyle(color: textGrey, fontSize: 14)),
                   const SizedBox(height: 10),
 
-                  // Chips de Grupos
+
                   StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collection('clase')
@@ -273,7 +260,6 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
 
             const SizedBox(height: 30),
 
-            // --- SECCIÓN 2: HISTORIAL (MODIFICADA) ---
             Text("Enviadas Recientemente", style: TextStyle(color: textDark, fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 15),
 
@@ -302,11 +288,9 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
                         fechaStr = DateFormat('dd MMM, HH:mm').format(t.toDate());
                       }
 
-                      // --- AQUÍ OBTENEMOS EL NOMBRE REAL ---
                       String nombreMateria = "Cargando...";
                       if (data['claseId'] != null && data['claseId'] is DocumentReference) {
                         String idClase = (data['claseId'] as DocumentReference).id;
-                        // Buscamos en nuestro diccionario
                         nombreMateria = nombresClases[idClase] ?? "Grupo desconocido";
                       }
 
@@ -332,12 +316,10 @@ class _TeacherNotificationScreenState extends State<TeacherNotificationScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // --- ESTA ES LA PARTE QUE CAMBIAMOS ---
                                 Row(
                                   children: [
                                     Icon(Icons.people_outline, size: 16, color: textGrey),
                                     const SizedBox(width: 4),
-                                    // Antes decía "Ver grupo", ahora muestra el nombre real
                                     Text(
                                       nombreMateria,
                                       style: TextStyle(color: textGrey, fontSize: 13, fontWeight: FontWeight.w500),

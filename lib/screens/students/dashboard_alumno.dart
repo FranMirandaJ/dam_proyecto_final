@@ -22,7 +22,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE REFRESH INTELIGENTE ---
+  // --- LÓGICA DE REFRESH  ---
   void _scheduleNextRefresh(List<QueryDocumentSnapshot> docs) {
     _timer?.cancel();
 

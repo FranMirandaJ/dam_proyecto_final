@@ -125,7 +125,7 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
         )
         .toList();
 
-    // --- CÁLCULOS ---
+    //  CÁLCULOS
     final int total = listaAlumnos.length;
     final int presentes = listaAlumnos
         .where((a) => a['asistio'] == true)
@@ -150,7 +150,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
           ? Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 1. CONFIGURACIÓN DE BÚSQUEDA (FECHA Y MATERIA)
                 Container(
                   padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
                   color: Color(0xfff7f8fa),
@@ -166,7 +165,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                       ),
                       SizedBox(height: 12),
 
-                      // SELECTOR DE FECHA
                       GestureDetector(
                         onTap: () async {
                           final safeInitialDate = _obtenerFechaInicialValida();
@@ -225,7 +223,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                       ),
                       SizedBox(height: 12),
 
-                      // DROPDOWN MATERIAS
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 12,
@@ -262,9 +259,7 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                   ),
                 ),
 
-                // SOLO MOSTRAMOS LO DEMÁS SI HAY DATOS CARGADOS
                 if (listaAlumnos.isNotEmpty) ...[
-                  // 2. ESTADÍSTICAS (Cuadros de conteo)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Row(
@@ -295,7 +290,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
 
                   SizedBox(height: 20),
 
-                  // 3. SUBTÍTULO "Lista de asistencia"
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Align(
@@ -312,7 +306,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
 
                   SizedBox(height: 10),
 
-                  // 4. BARRA DE BÚSQUEDA
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Container(
@@ -332,7 +325,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
                   SizedBox(height: 10),
                 ],
 
-                // 5. LISTA DE ALUMNOS (Expanded para ocupar el resto)
                 Expanded(
                   child: isLoadingAlumnos
                       ? Center(child: CircularProgressIndicator())
@@ -381,7 +373,6 @@ class _AsistenciasPageState extends State<AsistenciasPage> {
     );
   }
 
-  // --- WIDGETS AUXILIARES ---
 
   BoxDecoration _boxDecoration() => BoxDecoration(
     color: Colors.white,

@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class AdminUsersScreen extends StatelessWidget {
   const AdminUsersScreen({Key? key}) : super(key: key);
 
-  // --- LÓGICA DE CONFIRMACIÓN Y BORRADO ---
   Future<void> _confirmarEliminacion(BuildContext context, String uid, String nombre, String rol) async {
     return showDialog(
       context: context,
@@ -17,7 +16,7 @@ class AdminUsersScreen extends StatelessWidget {
             Text("Estás a punto de eliminar a '$nombre'."),
             const SizedBox(height: 10),
             const Text(
-              "⚠️ ADVERTENCIA: Esta acción es irreversible y borrará todos los datos asociados (Clases, Asistencias, etc.).",
+              "ADVERTENCIA: Esta acción es irreversible y borrará todos los datos asociados (Clases, Asistencias, etc.).",
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
             ),
           ],
@@ -41,7 +40,7 @@ class AdminUsersScreen extends StatelessWidget {
     );
   }
 
-  // --- CASO 1: ELIMINAR ALUMNO ---
+  // --- ELIMINAR ALUMNO ---
   Future<void> _eliminarAlumnoCascada(BuildContext context, String uid) async {
     _mostrarLoading(context);
     try {
@@ -49,16 +48,11 @@ class AdminUsersScreen extends StatelessWidget {
       final batch = db.batch();
       final alumnoRef = db.collection('usuario').doc(uid);
 
-      // 1. Borrar todas sus asistencias
       final asistencias = await db.collection('asistencia').where('alumnoId', isEqualTo: alumnoRef).get();
       for (var doc in asistencias.docs) {
         batch.delete(doc.reference);
       }
 
-      // 2. Sacarlo de los arrays 'alumnos' en las clases
-      // Nota: ArrayRemove no se puede hacer en batch fácilmente si requiere query previa,
-      // así que lo haremos transacción por transacción o una por una.
-      // Para eficiencia, buscamos clases donde esté inscrito.
       final clasesInscritas = await db.collection('clase').where('alumnos', arrayContains: alumnoRef).get();
       for (var clase in clasesInscritas.docs) {
         batch.update(clase.reference, {
@@ -66,7 +60,6 @@ class AdminUsersScreen extends StatelessWidget {
         });
       }
 
-      // 3. Borrar usuario
       batch.delete(alumnoRef);
 
       await batch.commit();
@@ -80,33 +73,26 @@ class AdminUsersScreen extends StatelessWidget {
     }
   }
 
-  // --- CASO 2: ELIMINAR DOCENTE ---
   Future<void> _eliminarDocenteCascada(BuildContext context, String uid) async {
     _mostrarLoading(context);
     try {
       final db = FirebaseFirestore.instance;
       final docenteRef = db.collection('usuario').doc(uid);
 
-      // 1. Buscar todas las CLASES del docente
       final clases = await db.collection('clase').where('profesor', isEqualTo: docenteRef).get();
 
-      // Para cada clase, hay que borrar sus asistencias primero
       for (var clase in clases.docs) {
-        // Esto es pesado, así que lo hacemos en micro-lotes
         final asistenciasClase = await db.collection('asistencia').where('claseId', isEqualTo: clase.reference).get();
 
-        // Borramos asistencias de esa clase
         final batchAsistencias = db.batch();
         for (var asis in asistenciasClase.docs) {
           batchAsistencias.delete(asis.reference);
         }
         await batchAsistencias.commit();
 
-        // Borramos la clase
         await clase.reference.delete();
       }
 
-      // 2. Borrar notificaciones enviadas por él
       final notifs = await db.collection('notificaciones').where('docenteId', isEqualTo: docenteRef).get();
       final batchNotifs = db.batch();
       for (var notif in notifs.docs) {
@@ -114,7 +100,6 @@ class AdminUsersScreen extends StatelessWidget {
       }
       await batchNotifs.commit();
 
-      // 3. Borrar usuario
       await docenteRef.delete();
 
       if (context.mounted) {
@@ -159,7 +144,7 @@ class AdminUsersScreen extends StatelessWidget {
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 80), // Espacio para el FAB
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 80),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;

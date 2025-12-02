@@ -22,7 +22,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE REFRESH INTELIGENTE ---
   void _scheduleNextRefresh(List<QueryDocumentSnapshot> docs) {
     _timer?.cancel();
 
@@ -43,14 +42,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         end = start.add(const Duration(hours: 1));
       }
 
-      // Si la clase va a empezar en el futuro, programamos refresh para cuando empiece
       if (start.isAfter(now)) {
         if (nextRefreshTime == null || start.isBefore(nextRefreshTime)) {
           nextRefreshTime = start;
         }
       }
 
-      // Si la clase está en curso o va a terminar en el futuro, programamos refresh para cuando termine
       if (end.isAfter(now)) {
         if (nextRefreshTime == null || end.isBefore(nextRefreshTime)) {
           nextRefreshTime = end;
@@ -59,15 +56,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
 
     if (nextRefreshTime != null) {
-      // AQUÍ ESTÁ EL CAMBIO: Refrescar 1 minuto después de la hora fin
       final durationUntilRefresh = nextRefreshTime.difference(now) + const Duration(minutes: 1);
-
-      // print("⏰ Refresh programado en: ${durationUntilRefresh.inMinutes} minutos");
 
       _timer = Timer(durationUntilRefresh, () {
         if (mounted) {
           setState(() {});
-          _scheduleNextRefresh(docs); // Reprogramar para el siguiente evento
+          _scheduleNextRefresh(docs);
         }
       });
     }
@@ -118,7 +112,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       backgroundColor: primaryGreen,
       body: SafeArea(
         bottom: false,
-        // 1. STREAM DE CLASES
         child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('clase')
@@ -131,7 +124,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
               final clasesDocsRaw = snapshotClases.data!.docs;
 
-              // --- ORDENAMIENTO MANUAL POR HORA ---
               final List<QueryDocumentSnapshot> sortedDocs = List.from(clasesDocsRaw);
               sortedDocs.sort((a, b) {
                 final dataA = a.data() as Map<String, dynamic>;
@@ -158,7 +150,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 totalAsistenciasPosibles += (dictadas * alumnos.length);
               }
 
-              // Programar Refresh Automático con los documentos ordenados
               if (_timer == null || !_timer!.isActive) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _scheduleNextRefresh(sortedDocs);
@@ -177,7 +168,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 );
               }
 
-              // 2. STREAM DE ASISTENCIAS
               return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('asistencia')

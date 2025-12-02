@@ -39,7 +39,6 @@ class _MapaState extends State<Mapa> {
     super.dispose();
   }
 
-  // Lógica corregida para clasificar clases usando horaFin
   Future<void> _cargarClases() async {
     final user = Provider.of<UserProvider>(context, listen: false).user;
     if (user == null || user.uid.isEmpty) return;
@@ -64,7 +63,6 @@ class _MapaState extends State<Mapa> {
         final finInMinutes =
             int.parse(finParts[0]) * 60 + int.parse(finParts[1]);
 
-        // Lógica de estado corregida
         final isPast = nowInMinutes > finInMinutes;
         final isInProgress =
             nowInMinutes >= inicioInMinutes && nowInMinutes <= finInMinutes;
@@ -72,9 +70,7 @@ class _MapaState extends State<Mapa> {
         return {...clase, 'isPast': isPast, 'isInProgress': isInProgress};
       }).toList();
 
-      // Ordena la lista
       processedClases.sort((a, b) {
-        // Comparación segura para evitar el error
         final aIsPast = a['isPast'] == true;
         final bIsPast = b['isPast'] == true;
 
@@ -173,7 +169,6 @@ class _MapaState extends State<Mapa> {
 
   @override
   Widget build(BuildContext context) {
-    // La lista de UI ahora muestra clases en curso y próximas
     final upcomingOrCurrentClases = _allClases
         .where((c) => c['isPast'] != true)
         .toList();
@@ -183,7 +178,6 @@ class _MapaState extends State<Mapa> {
       final clase = _allClases[i];
       final isSelected = i == _selectedIndex;
 
-      // Comparación segura para los estados
       final bool isPast = clase['isPast'] == true;
       final bool isInProgress = clase['isInProgress'] == true;
 

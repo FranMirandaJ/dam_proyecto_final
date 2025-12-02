@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart' hide GeoPoint; // <--- AQUÍ ESTÁ LA CORRECCIÓN
-import 'package:geolocator/geolocator.dart'; // Asegúrate de agregarlo a pubspec.yaml
+import 'package:mobile_scanner/mobile_scanner.dart' hide GeoPoint;
+import 'package:geolocator/geolocator.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({Key? key}) : super(key: key);
@@ -13,9 +13,8 @@ class QRScannerScreen extends StatefulWidget {
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
   final MobileScannerController controller = MobileScannerController();
-  bool _isProcessing = false; // Para evitar lecturas múltiples
+  bool _isProcessing = false;
 
-  // Tamaño del área de escaneo
   final double scanSize = 300.0;
 
   @override
@@ -24,53 +23,42 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA PRINCIPAL DE VALIDACIÓN Y REGISTRO ---
   Future<void> _procesarCodigoQR(String rawCode) async {
     if (_isProcessing) return; // Evita doble procesamiento
     setState(() => _isProcessing = true);
 
     try {
-      // 1. PARSEO DEL CÓDIGO
-      // Formato esperado: "CLASEID_TIMESTAMP"
       final parts = rawCode.split('_');
       if (parts.isEmpty) throw "Código QR inválido";
 
       final String claseId = parts[0];
       final String uidAlumno = FirebaseAuth.instance.currentUser!.uid;
 
-      // Mostrar carga
       _mostrarDialogoCarga();
 
-      // 2. CONSULTAR DATOS DE LA CLASE
       final claseDoc = await FirebaseFirestore.instance.collection('clase').doc(claseId).get();
 
       if (!claseDoc.exists) throw "La clase no existe";
       final dataClase = claseDoc.data()!;
 
-      // 2.1 Validar si el QR sigue activo según el profesor
       if (dataClase['qrActivo'] == false) {
         throw "El código QR ya no es válido o ha expirado.";
       }
 
-      // 2.2 Validar si el alumno pertenece a la clase
+      // Validar si el alumno pertenece a la clase
       final List<dynamic> alumnosInscritos = dataClase['alumnos'] ?? [];
-      // Buscamos si la referencia del usuario está en la lista
-      // Tu BD guarda referencias completas: /usuario/UID
       final userRef = FirebaseFirestore.instance.doc('usuario/$uidAlumno');
 
-      // A veces Firestore compara referencias directo, a veces hay que comparar paths
       bool estaInscrito = alumnosInscritos.any((a) => a == userRef);
       if (!estaInscrito) throw "No estás inscrito en esta clase.";
 
-      // 3. VALIDACIÓN DE UBICACIÓN (GPS)
+      // VALIDACIÓN DE UBICACIÓN (GPS)
       // Obtenemos referencia del aula para sacar sus coordenadas reales
       final DocumentReference aulaRef = dataClase['aula'];
       final aulaDoc = await aulaRef.get();
 
       if (!aulaDoc.exists) throw "Error: Aula no encontrada en el sistema.";
 
-      // Asumiendo que guardaste coordenadas como GeoPoint o Mapa [lat, lng]
-      // Tu imagen mostraba un array [lat, lng], lo adaptamos:
       final dynamic coordsData = aulaDoc['coordenadas'];
       double aulaLat = 0;
       double aulaLng = 0;
@@ -79,7 +67,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         aulaLat = coordsData.latitude;
         aulaLng = coordsData.longitude;
       } else if (coordsData is List) {
-        // Si lo guardaste como array [lat, lng]
         aulaLat = coordsData[0];
         aulaLng = coordsData[1];
       }
@@ -102,7 +89,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         throw "Estás demasiado lejos del salón (${distanciaEnMetros.round()}m). Acércate más.";
       }
 
-      // 4. VERIFICAR DUPLICADOS (Si ya checó hoy)
+      // VERIFICAR DUPLICADOS (Si ya checó hoy)
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
       final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
@@ -119,16 +106,14 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         throw "Ya has registrado tu asistencia hoy.";
       }
 
-      // 5. REGISTRAR ASISTENCIA
+      // REGISTRAR ASISTENCIA
       await FirebaseFirestore.instance.collection('asistencia').add({
         'claseId': claseDoc.reference,
         'alumnoId': userRef,
         'fecha': FieldValue.serverTimestamp(),
         'ubicacionRegistro': GeoPoint(position.latitude, position.longitude),
-        // 'estado': 1 // Ya acordamos que no es necesario, la existencia basta
       });
 
-      // ÉXITO
       if (mounted) {
         Navigator.pop(context); // Cerrar loading
         _mostrarExito("¡Asistencia registrada correctamente!");
@@ -136,17 +121,15 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Cerrar loading
+        Navigator.pop(context);
         _mostrarError(e.toString());
       }
     } finally {
-      // Pequeño delay antes de permitir escanear de nuevo si falló
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  // Helper para permisos de GPS
   Future<Position> _determinarPosicion() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -217,7 +200,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Colores
     final Color backgroundColor = const Color(0xFF0F111A);
     final Color accentBlue = const Color(0xFF3B82F6);
     final Color accentGreen = const Color(0xFF00C853);
@@ -226,7 +208,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       backgroundColor: backgroundColor,
       body: Stack(
         children: [
-          // 1. CÁMARA
+          // CÁMARA
           MobileScanner(
             controller: controller,
             errorBuilder: (context, error, child) {
@@ -237,13 +219,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               for (final barcode in barcodes) {
                 if (barcode.rawValue != null) {
                   _procesarCodigoQR(barcode.rawValue!);
-                  break; // Procesar solo el primero
+                  break;
                 }
               }
             },
           ),
 
-          // 2. FONDO OSCURO CON HUECO
           Positioned.fill(
             child: CustomPaint(
               painter: QRScannerOverlay(
@@ -253,8 +234,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               ),
             ),
           ),
-
-          // 3. MARCOS AZULES
           Center(
             child: SizedBox(
               width: scanSize,
@@ -264,8 +243,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               ),
             ),
           ),
-
-          // 4. INTERFAZ
           SafeArea(
             child: Column(
               children: [
@@ -331,7 +308,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 }
 
-// ... (Las clases QRScannerOverlay y ScannerOverlayPainter se mantienen igual que en tu versión anterior)
 class QRScannerOverlay extends CustomPainter {
   final Color overlayColor;
   final double scanAreaSize;

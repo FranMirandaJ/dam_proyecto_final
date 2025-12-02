@@ -3,9 +3,8 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-// Paquetes para guardar imagen
 import 'package:screenshot/screenshot.dart';
-import 'package:gal/gal.dart'; // <--- NUEVA LIBRERÍA (Reemplaza a image_gallery_saver)
+import 'package:gal/gal.dart';
 
 class TeacherGenerateQRScreen extends StatefulWidget {
   final String claseId;
@@ -37,7 +36,6 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
   int _minutosExtraAgregados = 0;
   final int _maxMinutosExtra = 10;
 
-  // Controlador de Captura
   final ScreenshotController _screenshotController = ScreenshotController();
   bool _isSaving = false;
 
@@ -53,22 +51,18 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA PARA GUARDAR IMAGEN (ACTUALIZADA CON GAL) ---
   Future<void> _guardarImagenQR() async {
     if (qrData == null) return;
 
     setState(() => _isSaving = true);
 
     try {
-      // 1. Capturar el widget como imagen
       final Uint8List? imageBytes = await _screenshotController.capture(
           delay: const Duration(milliseconds: 10),
           pixelRatio: 3.0
       );
 
       if (imageBytes != null) {
-        // 2. Guardar en la galería usando GAL
-        // Gal maneja automáticamente los permisos en Android/iOS modernos
         await Gal.putImageBytes(imageBytes);
 
         if (mounted) {
@@ -81,7 +75,6 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
         }
       }
     } on GalException catch (e) {
-      // Manejo de errores específicos de galería (ej. permiso denegado)
       print("Error de Galería: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -421,8 +414,6 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
                             foregroundColor: darkText,
                             backgroundColor: Colors.white,
                           ),
-                          // Esquinas decorativas (Opcional, solo si no estorban)
-                          // _buildCornerBrackets(greyText.withOpacity(0.3)),
                         ],
                       ),
                     ],

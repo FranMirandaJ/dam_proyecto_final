@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:proyecto_final/services/auth.dart';
 import 'package:proyecto_final/screens/LoginRegister.dart';
 
-// Importamos las pantallas individuales
 import 'admin_users.dart';
 import 'admin_aulas.dart';
 import 'admin_periodos.dart';
@@ -23,7 +22,6 @@ class AdminHomeScreen extends StatefulWidget {
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _currentIndex = 0;
 
-  // Color distintivo para Admin (Indigo)
   final Color primaryColor = const Color(0xFF3F51B5);
 
   final List<String> _titles = [
@@ -33,7 +31,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     "Gestión Clases",
   ];
 
-  // Lista de las pantallas importadas
   late final List<Widget> _screens = [
     const AdminUsersScreen(),
     const AdminAulasScreen(),
@@ -105,23 +102,21 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         ],
       ),
 
-      // Botón flotante genérico (la lógica específica dependerá de la pantalla actual)
+      // Botón flotante genérico
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         child: const Icon(Icons.add, color: Colors.white),
         onPressed: () {
           if (_currentIndex == 0) {
-            // USUARIOS: Abrimos el Bottom Sheet
+            // USUARIOS
             showModalBottomSheet(
               context: context,
               isScrollControlled: true,
-              // ¡IMPORTANTE! Permite que el teclado empuje el modal
               backgroundColor: Colors.transparent,
-              // Para ver los bordes redondeados
               builder: (context) => const CreateTeacherModal(),
             );
           } else if (_currentIndex == 1) {
-            // --- AULAS: NUEVA LÓGICA ---
+            // AULAS
             showModalBottomSheet(
               context: context,
               isScrollControlled: true, // Importante para el teclado
