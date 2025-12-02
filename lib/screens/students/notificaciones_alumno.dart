@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // IMPORTANTE: Agregado de nuevo
 
 class StudentNotificationScreen extends StatefulWidget {
   const StudentNotificationScreen({Key? key}) : super(key: key);
@@ -27,8 +28,9 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
     _cargaInicialFuture = _cargarDatosIniciales();
   }
 
+  // --- LÓGICA DE CARGA Y PERSISTENCIA ---
+
   Future<void> _cargarDatosIniciales() async {
-    // 1. Esperamos un poco para asegurar que Auth esté listo
     if (currentUser == null)
       await Future.delayed(const Duration(milliseconds: 500));
 
@@ -40,14 +42,20 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
     final user = currentUser;
     if (user == null) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'leidas_${user.uid}';
-    final listaGuardada = prefs.getStringList(key);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'leidas_${user.uid}';
+      final listaGuardada = prefs.getStringList(key);
 
-    if (mounted) {
-      setState(() {
-        _leidas = listaGuardada != null ? List<String>.from(listaGuardada) : [];
-      });
+      if (mounted) {
+        setState(() {
+          _leidas = listaGuardada != null
+              ? List<String>.from(listaGuardada)
+              : [];
+        });
+      }
+    } catch (e) {
+      debugPrint("Error cargando preferencias: $e");
     }
   }
 
@@ -56,29 +64,40 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
     if (user == null) return;
 
     if (!_leidas.contains(idNotificacion)) {
-      setState(() => _leidas.add(idNotificacion)); // Actualización inmediata UI
+      setState(() => _leidas.add(idNotificacion));
 
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setStringList('leidas_${user.uid}', _leidas);
       } catch (e) {
-        print("Error guardando leída: $e");
+        debugPrint("Error guardando leída: $e");
       }
+    }
+  }
+
+  // --- SUSCRIPCIÓN A FIREBASE MESSAGING (RESTAURADO) ---
+  void _activarNotificacionesFCM(List<DocumentReference> misClases) async {
+    try {
+      final fcm = FirebaseMessaging.instance;
+      // Pedimos permiso nuevamente para asegurar
+      await fcm.requestPermission(alert: true, badge: true, sound: true);
+
+      // Nos suscribimos a cada clase encontrada
+      for (var ref in misClases) {
+        final topic = "clase_${ref.id}";
+        await fcm.subscribeToTopic(topic);
+        // debugPrint("Suscrito al tema: $topic"); // Descomentar para depurar
+      }
+    } catch (e) {
+      debugPrint("Error suscribiendo a FCM: $e");
     }
   }
 
   Future<void> _inicializarStream() async {
     final user = currentUser;
-    if (user == null) {
-      print("❌ [DEBUG] No hay usuario logueado en Notificaciones.");
-      return;
-    }
-
-    print("🔍 [DEBUG] Buscando clases para alumno UID: ${user.uid}");
+    if (user == null) return;
 
     try {
-      // Creamos la referencia EXACTAMENTE igual que en Firestore
-      // Nota: Asegúrate que en tu BD los alumnos sean de tipo Reference /usuario/ID
       DocumentReference refAlumno = FirebaseFirestore.instance.doc(
         'usuario/${user.uid}',
       );
@@ -87,8 +106,6 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
           .collection('clase')
           .where('alumnos', arrayContains: refAlumno)
           .get();
-
-      print("✅ [DEBUG] Clases encontradas: ${clasesDondeEstoy.docs.length}");
 
       if (clasesDondeEstoy.docs.isEmpty) {
         if (mounted) setState(() => _notificacionesStream = null);
@@ -105,12 +122,11 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
         listaClasesRefs.add(doc.reference);
       }
 
-      // Firestore limita 'whereIn' a 10 elementos. Si son más, tomamos las primeras 10
-      // (o tendrías que hacer lógica para más de 10, pero para una escuela es raro)
+      // IMPORTANTE: Aquí restauramos la suscripción para que las alertas vuelvan a funcionar
+      _activarNotificacionesFCM(listaClasesRefs);
+
+      // Límite de Firestore para 'whereIn' es 10
       if (listaClasesRefs.length > 10) {
-        print(
-          "⚠️ [AVISO] El alumno tiene más de 10 clases, solo se monitorean las primeras 10.",
-        );
         listaClasesRefs = listaClasesRefs.take(10).toList();
       }
 
@@ -125,16 +141,16 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
         });
       }
     } catch (e) {
-      print("❌ [ERROR] Al cargar notificaciones: $e");
+      debugPrint("Error inicializando stream: $e");
     }
   }
 
   @override
-  bool get wantKeepAlive => true; // Mantiene la pantalla viva
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Necesario para KeepAlive
+    super.build(context);
 
     final Color primaryBlue = const Color(0xFF2563EB);
     final Color textDark = const Color(0xFF1F222E);
@@ -142,7 +158,6 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
     return FutureBuilder(
       future: _cargaInicialFuture,
       builder: (context, snapshotCarga) {
-        // Pantalla de carga mientras verificamos clases y preferencias
         if (snapshotCarga.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: Colors.white,
@@ -170,7 +185,8 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return const SizedBox();
                   final docs = snapshot.data!.docs;
-                  // Contador filtrado: Solo las NO leídas
+
+                  // Contador inteligente: Total - Leídas localmente
                   int sinLeer = docs
                       .where((doc) => !_leidas.contains(doc.id))
                       .length;
@@ -205,7 +221,7 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.class_outlined,
+                        Icons.notifications_off_outlined,
                         size: 50,
                         color: Colors.grey.shade300,
                       ),
@@ -214,15 +230,15 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                         "No tienes clases asignadas",
                         style: TextStyle(color: Colors.grey),
                       ),
-                      const SizedBox(height: 5),
-                      // Botón para reintentar por si fue error de red
+                      const SizedBox(height: 10),
                       TextButton(
                         onPressed: () {
-                          setState(
-                            () => _cargaInicialFuture = _cargarDatosIniciales(),
-                          );
+                          // Solución al error de setState + Future
+                          setState(() {
+                            _cargaInicialFuture = _cargarDatosIniciales();
+                          });
                         },
-                        child: const Text("Reintentar"),
+                        child: const Text("Actualizar"),
                       ),
                     ],
                   ),
@@ -232,7 +248,9 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting)
                       return const Center(child: CircularProgressIndicator());
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+
+                    final docs = snapshot.data?.docs;
+                    if (docs == null || docs.isEmpty) {
                       return Center(
                         child: Text(
                           "Sin notificaciones",
@@ -240,8 +258,6 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                         ),
                       );
                     }
-
-                    final docs = snapshot.data!.docs;
 
                     return ListView.builder(
                       physics: const BouncingScrollPhysics(),
@@ -255,10 +271,9 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                         final data = doc.data() as Map<String, dynamic>;
                         final String docId = doc.id;
 
-                        // Verificar si está leída
+                        // Verificar estado de lectura
                         bool isUnread = !_leidas.contains(docId);
 
-                        // Formato Fecha
                         String tiempoAtras = "";
                         if (data['fecha'] != null) {
                           Timestamp t = data['fecha'];
@@ -267,7 +282,6 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                           ).format(t.toDate());
                         }
 
-                        // Icono
                         IconData icono = Icons.notifications_none_rounded;
                         Color colorIcono = primaryBlue;
                         String titulo = data['titulo'] ?? 'Aviso';
@@ -276,7 +290,6 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                           colorIcono = const Color(0xFFFFA000);
                         }
 
-                        // Nombre Materia
                         String nombreMateria = "Materia";
                         try {
                           dynamic claseRef = data['claseId'];
@@ -290,127 +303,15 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                         return GestureDetector(
                           onTap: () => _marcarComoLeida(docId),
                           child: Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: isUnread
-                                  ? Colors.white
-                                  : Colors.grey.shade50,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(
-                                    isUnread ? 0.06 : 0.0,
-                                  ),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: IntrinsicHeight(
-                                child: Row(
-                                  children: [
-                                    if (isUnread)
-                                      Container(width: 5, color: primaryBlue),
-                                    Expanded(
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(16.0),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 3,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey.shade100,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          6,
-                                                        ),
-                                                  ),
-                                                  child: Text(
-                                                    nombreMateria,
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      color:
-                                                          Colors.grey.shade700,
-                                                    ),
-                                                  ),
-                                                ),
-                                                if (isUnread)
-                                                  Container(
-                                                    width: 8,
-                                                    height: 8,
-                                                    decoration: BoxDecoration(
-                                                      color: primaryBlue,
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                Icon(
-                                                  icono,
-                                                  size: 20,
-                                                  color: isUnread
-                                                      ? colorIcono
-                                                      : Colors.grey,
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: Text(
-                                                    titulo,
-                                                    style: TextStyle(
-                                                      fontWeight: isUnread
-                                                          ? FontWeight.bold
-                                                          : FontWeight.normal,
-                                                      fontSize: 16,
-                                                      color: textDark,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              data['cuerpo'] ?? '',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade600,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Align(
-                                              alignment: Alignment.bottomRight,
-                                              child: Text(
-                                                tiempoAtras,
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.grey.shade400,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                            color: Colors.transparent,
+                            child: _buildNotificationCard(
+                              icon: icono,
+                              iconColor: isUnread ? colorIcono : Colors.grey,
+                              title: titulo,
+                              body: data['cuerpo'] ?? '',
+                              time: tiempoAtras,
+                              isUnread: isUnread,
+                              materia: nombreMateria,
                             ),
                           ),
                         );
@@ -420,6 +321,124 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                 ),
         );
       },
+    );
+  }
+
+  Widget _buildNotificationCard({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String body,
+    required String time,
+    required bool isUnread,
+    required String materia,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: isUnread ? Colors.white : const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isUnread ? 0.06 : 0.0),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              if (isUnread)
+                Container(width: 6, color: const Color(0xFF2563EB))
+              else
+                const SizedBox(width: 6),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              materia,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                          if (isUnread)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2563EB),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(icon, size: 20, color: iconColor),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                fontWeight: isUnread
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                fontSize: 16,
+                                color: const Color(0xFF1F222E),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        body,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Text(
+                          time,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
