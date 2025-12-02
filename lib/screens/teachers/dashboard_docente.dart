@@ -43,12 +43,14 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         end = start.add(const Duration(hours: 1));
       }
 
+      // Si la clase va a empezar en el futuro, programamos refresh para cuando empiece
       if (start.isAfter(now)) {
         if (nextRefreshTime == null || start.isBefore(nextRefreshTime)) {
           nextRefreshTime = start;
         }
       }
 
+      // Si la clase está en curso o va a terminar en el futuro, programamos refresh para cuando termine
       if (end.isAfter(now)) {
         if (nextRefreshTime == null || end.isBefore(nextRefreshTime)) {
           nextRefreshTime = end;
@@ -57,11 +59,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     }
 
     if (nextRefreshTime != null) {
-      final durationUntilRefresh = nextRefreshTime.difference(now) + const Duration(seconds: 30);
+      // AQUÍ ESTÁ EL CAMBIO: Refrescar 1 minuto después de la hora fin
+      final durationUntilRefresh = nextRefreshTime.difference(now) + const Duration(minutes: 1);
+
+      // print("⏰ Refresh programado en: ${durationUntilRefresh.inMinutes} minutos");
+
       _timer = Timer(durationUntilRefresh, () {
         if (mounted) {
           setState(() {});
-          _scheduleNextRefresh(docs);
+          _scheduleNextRefresh(docs); // Reprogramar para el siguiente evento
         }
       });
     }
@@ -152,6 +158,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 totalAsistenciasPosibles += (dictadas * alumnos.length);
               }
 
+              // Programar Refresh Automático con los documentos ordenados
               if (_timer == null || !_timer!.isActive) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _scheduleNextRefresh(sortedDocs);
@@ -170,6 +177,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 );
               }
 
+              // 2. STREAM DE ASISTENCIAS
               return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('asistencia')
@@ -231,6 +239,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // --- ENCABEZADO ---
         Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -239,7 +248,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // --- CORRECCIÓN AQUÍ: USAR EXPANDED PARA EVITAR DESBORDAMIENTO ---
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,14 +264,13 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
                           ),
-                          overflow: TextOverflow.ellipsis, // Cortar con ... si es muy largo
-                          maxLines: 1, // Asegurar que solo ocupe una línea (o 2 si prefieres)
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16), // Espacio entre el nombre y los botones
-                  // -----------------------------------------------------------------
+                  const SizedBox(width: 16),
 
                   Row(
                     children: [
@@ -276,9 +283,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         ),
                         child: Center(
                           child: Text(
-                            user.name.isNotEmpty ? user.name
-                                .substring(0, 2)
-                                .toUpperCase() : "PR",
+                            user.name.isNotEmpty ? user.name.substring(0, 2).toUpperCase() : "PR",
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -344,6 +349,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
         const SizedBox(height: 10),
 
+        // --- LISTA DE CLASES ---
         Expanded(
           child: Container(
             width: double.infinity,
@@ -390,6 +396,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         final List<dynamic> alumnos = data['alumnos'] ?? [];
                         final int totalAlumnos = alumnos.length;
 
+                        // --- LÓGICA DE CLASE ACTIVA (POR HORA) ---
                         bool isClassActive = false;
                         final currentTime = TimeOfDay.now();
                         final double currentDouble = currentTime.hour + currentTime.minute / 60.0;
@@ -403,6 +410,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         }
 
                         if (startDouble > 0 && endDouble > 0) {
+                          // Si está dentro del rango: Activa
                           if (currentDouble >= startDouble && currentDouble <= endDouble) {
                             isClassActive = true;
                           }

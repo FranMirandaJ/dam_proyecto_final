@@ -58,7 +58,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
     if (nextRefreshTime != null) {
       final durationUntilRefresh =
-          nextRefreshTime.difference(now) + const Duration(seconds: 30);
+          nextRefreshTime.difference(now) + const Duration(minutes: 1);
+
       _timer = Timer(durationUntilRefresh, () {
         if (mounted) {
           setState(() {});
@@ -118,11 +119,11 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
           stream: FirebaseFirestore.instance
               .collection('clase')
               .where(
-                'alumnos',
-                arrayContains: FirebaseFirestore.instance.doc(
-                  'usuario/${user.uid}',
-                ),
-              )
+            'alumnos',
+            arrayContains: FirebaseFirestore.instance.doc(
+              'usuario/${user.uid}',
+            ),
+          )
               .snapshots(),
 
           builder: (context, snapshotClases) {
@@ -135,23 +136,19 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
             final clasesDocsRaw = snapshotClases.data!.docs;
 
-            // --- CORRECCIÓN: ORDENAMIENTO MANUAL POR HORA ---
-            // Creamos una copia ordenada de la lista para mostrarla
+            // ORDENAMIENTO MANUAL
             final List<QueryDocumentSnapshot> sortedDocs = List.from(
               clasesDocsRaw,
             );
             sortedDocs.sort((a, b) {
               final dataA = a.data() as Map<String, dynamic>;
               final dataB = b.data() as Map<String, dynamic>;
-
-              // Convertimos horas a valores comparables (ej: "8:30" -> 8.5)
               final double tA = _timeStringToDouble(dataA['hora'] ?? '00:00');
               final double tB = _timeStringToDouble(dataB['hora'] ?? '00:00');
-
               return tA.compareTo(tB);
             });
 
-            // --- CÁLCULO TOTAL DE CLASES DICTADAS ---
+            // CÁLCULO TOTAL CLASES DICTADAS
             int totalClasesEsperadas = 0;
             for (var doc in sortedDocs) {
               final data = doc.data() as Map<String, dynamic>;
@@ -159,23 +156,22 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
               totalClasesEsperadas += dictadas;
             }
 
-            // Programar refresh automático
             if (_timer == null || !_timer!.isActive) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _scheduleNextRefresh(sortedDocs);
               });
             }
 
-            // 2. STREAM DE TODAS MIS ASISTENCIAS
+            // 2. STREAM DE ASISTENCIAS
             return StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('asistencia')
                   .where(
-                    'alumnoId',
-                    isEqualTo: FirebaseFirestore.instance.doc(
-                      'usuario/${user.uid}',
-                    ),
-                  )
+                'alumnoId',
+                isEqualTo: FirebaseFirestore.instance.doc(
+                  'usuario/${user.uid}',
+                ),
+              )
                   .snapshots(),
 
               builder: (context, snapshotAsistencias) {
@@ -186,17 +182,75 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
                 int cantidadAsistencias = misAsistenciasDocs.length;
 
-                // --- CÁLCULO DE ESTADÍSTICAS FINALES ---
-                int faltas = 0;
-                if (totalClasesEsperadas >= cantidadAsistencias) {
-                  faltas = totalClasesEsperadas - cantidadAsistencias;
+                // --- LÓGICA DE CORRECCIÓN DE FALTAS ---
+                int clasesEnCursoSinAsistencia = 0;
+                final now = DateTime.now();
+                final currentDouble = now.hour + now.minute / 60.0;
+                final startOfDay = DateTime(now.year, now.month, now.day);
+                final endOfDay = DateTime(
+                  now.year,
+                  now.month,
+                  now.day,
+                  23,
+                  59,
+                  59,
+                );
+
+                for (var doc in sortedDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final classRef = doc.reference;
+
+                  bool yaChecoHoy = misAsistenciasDocs.any((asist) {
+                    final aData = asist.data() as Map<String, dynamic>;
+                    final cRef = aData['claseId'];
+                    final Timestamp? t = aData['fecha'];
+                    if (cRef == classRef && t != null) {
+                      final d = t.toDate();
+                      return d.isAfter(startOfDay) && d.isBefore(endOfDay);
+                    }
+                    return false;
+                  });
+
+                  if (!yaChecoHoy) {
+                    final String horaInicioStr = data['hora'] ?? '00:00';
+                    final String? horaFinRaw = data['horaFin'];
+
+                    final double startH = _timeStringToDouble(horaInicioStr);
+                    double endH = 0.0;
+                    if (horaFinRaw != null) {
+                      endH = _timeStringToDouble(horaFinRaw);
+                    } else {
+                      endH = startH + 1.0;
+                    }
+
+                    if (startH > 0 &&
+                        currentDouble >= startH &&
+                        currentDouble <= endH) {
+                      clasesEnCursoSinAsistencia++;
+                    }
+                  }
                 }
+
+                // CÁLCULO FINAL
+                int faltasCalculadas =
+                    totalClasesEsperadas - cantidadAsistencias;
+                int faltasReales =
+                    faltasCalculadas - clasesEnCursoSinAsistencia;
+
+                if (faltasReales < 0) faltasReales = 0;
 
                 double porcentaje = 100.0;
                 if (totalClasesEsperadas > 0) {
-                  porcentaje =
-                      (cantidadAsistencias / totalClasesEsperadas) * 100;
+                  int baseCalculo =
+                      totalClasesEsperadas - clasesEnCursoSinAsistencia;
+                  if (baseCalculo > 0) {
+                    porcentaje = (cantidadAsistencias / baseCalculo) * 100;
+                  } else {
+                    porcentaje = 100.0;
+                  }
                 }
+                if(porcentaje > 100) porcentaje = 100;
+                if(porcentaje < 0) porcentaje = 0;
 
                 String porcentajeStr = porcentaje.toStringAsFixed(0);
 
@@ -212,29 +266,35 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "Bienvenido de nuevo",
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 14,
+                              // --- CORRECCIÓN DEL OVERFLOW ---
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      "Bienvenido de nuevo",
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    user.name,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      user.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis, // Corta con ...
+                                      maxLines: 1, // Máximo 1 línea
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 16), // Espacio
+                              // -------------------------------
                               Row(
-                                // Este Row agrupa los elementos de la derecha
                                 children: [
                                   Container(
                                     width: 48,
@@ -247,8 +307,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                       child: Text(
                                         user.name.isNotEmpty
                                             ? user.name
-                                                  .substring(0, 2)
-                                                  .toUpperCase()
+                                            .substring(0, 2)
+                                            .toUpperCase()
                                             : "US",
                                         style: const TextStyle(
                                           color: Colors.white,
@@ -258,8 +318,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 10), // Separador
-                                  // Botón de Logout Integrado
+                                  const SizedBox(width: 10),
                                   Container(
                                     width: 48,
                                     height: 48,
@@ -278,18 +337,14 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                       ),
                                       tooltip: "Cerrar sesión",
                                       onPressed: () {
-                                        // 1. Iniciamos el cierre de sesión sin esperar (sin await)
-                                        // para evitar que el provider actualice la UI a "Loading" y bloquee la navegación.
                                         Auth().signOut(context);
-
-                                        // 2. Navegamos inmediatamente
                                         Navigator.pushAndRemoveUntil(
                                           context,
                                           MaterialPageRoute(
                                             builder: (context) =>
-                                                const LoginRegister(),
+                                            const LoginRegister(),
                                           ),
-                                          (Route<dynamic> route) => false,
+                                              (Route<dynamic> route) => false,
                                         );
                                       },
                                     ),
@@ -300,7 +355,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           ),
 
                           const SizedBox(height: 30),
-                          // FILA DE ESTADÍSTICAS
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -309,7 +363,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 "$totalClasesEsperadas",
                                 "Clases Totales",
                               ),
-                              _buildStatItem("$faltas", "Faltas"),
+                              _buildStatItem("$faltasReales", "Faltas"),
                             ],
                           ),
                         ],
@@ -340,7 +394,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               ),
                               child: Row(
                                 mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                                MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     "Mis Materias",
@@ -359,161 +413,160 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               ),
                             ),
 
-                            // Lista de Materias (USAMOS sortedDocs)
                             Expanded(
                               child: RefreshIndicator(
                                 onRefresh: _handleRefresh,
                                 color: primaryBlue,
                                 child: sortedDocs.isEmpty
                                     ? ListView(
-                                        children: const [
-                                          SizedBox(height: 100),
-                                          Center(
-                                            child: Text(
-                                              "No tienes materias inscritas.",
-                                              style: TextStyle(
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : ListView.builder(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 24,
+                                  children: const [
+                                    SizedBox(height: 100),
+                                    Center(
+                                      child: Text(
+                                        "No tienes materias inscritas.",
+                                        style: TextStyle(
+                                          color: Colors.grey,
                                         ),
-                                        physics:
-                                            const AlwaysScrollableScrollPhysics(),
-                                        itemCount: sortedDocs.length,
-                                        // Usamos la lista ordenada
-                                        itemBuilder: (context, index) {
-                                          final data =
-                                              sortedDocs[index].data()
-                                                  as Map<String, dynamic>;
-                                          final classDocRef =
-                                              sortedDocs[index].reference;
+                                      ),
+                                    ),
+                                  ],
+                                )
+                                    : ListView.builder(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                  ),
+                                  physics:
+                                  const AlwaysScrollableScrollPhysics(),
+                                  itemCount: sortedDocs.length,
+                                  itemBuilder: (context, index) {
+                                    final data =
+                                    sortedDocs[index].data()
+                                    as Map<String, dynamic>;
+                                    final classDocRef =
+                                        sortedDocs[index].reference;
 
-                                          final String materia =
-                                              data['nombre'] ?? 'Sin nombre';
+                                    final String materia =
+                                        data['nombre'] ?? 'Sin nombre';
 
-                                          // Manejo del aula
-                                          String aulaRaw =
-                                              data['aula']?.toString() ??
-                                              'Sin aula';
-                                          String salonDisplay =
-                                              aulaRaw.contains('/')
-                                              ? "Aula Asignada"
-                                              : aulaRaw;
+                                    final dynamic aulaField = data['aula'];
 
-                                          final String horaInicioStr =
-                                              data['hora'] ?? '00:00';
-                                          final String? horaFinRaw =
-                                              data['horaFin'];
+                                    final String horaInicioStr =
+                                        data['hora'] ?? '00:00';
+                                    final String? horaFinRaw =
+                                    data['horaFin'];
 
-                                          final colors = [
-                                            const Color(0xFF00C853),
-                                            const Color(0xFF2563EB),
-                                            const Color(0xFFFFA000),
-                                            const Color(0xFFE91E63),
-                                          ];
-                                          final color =
-                                              colors[index % colors.length];
+                                    final colors = [
+                                      const Color(0xFF00C853),
+                                      const Color(0xFF2563EB),
+                                      const Color(0xFFFFA000),
+                                      const Color(0xFFE91E63),
+                                    ];
+                                    final color =
+                                    colors[index % colors.length];
 
-                                          // --- LÓGICA DE ESTADO INDIVIDUAL ---
-                                          final now = DateTime.now();
-                                          final startOfDay = DateTime(
-                                            now.year,
-                                            now.month,
-                                            now.day,
+                                    // FutureBuilder para resolver el nombre del Aula
+                                    return FutureBuilder<DocumentSnapshot>(
+                                      future: (aulaField is DocumentReference) ? aulaField.get() : null,
+                                      builder: (context, snapshotAula) {
+                                        String nombreAula = "Sin asignar";
+                                        if (aulaField is String) {
+                                          nombreAula = aulaField;
+                                        } else if (snapshotAula.hasData && snapshotAula.data != null && snapshotAula.data!.exists) {
+                                          final aulaData = snapshotAula.data!.data() as Map<String, dynamic>;
+                                          nombreAula = aulaData['aula'] ?? "Aula ??";
+                                        }
+
+                                        final now = DateTime.now();
+                                        final startOfDay = DateTime(
+                                          now.year,
+                                          now.month,
+                                          now.day,
+                                        );
+                                        final endOfDay = DateTime(
+                                          now.year,
+                                          now.month,
+                                          now.day,
+                                          23,
+                                          59,
+                                          59,
+                                        );
+
+                                        bool tieneAsistenciaHoy =
+                                        misAsistenciasDocs.any((
+                                            asistDoc,
+                                            ) {
+                                          final asistData =
+                                          asistDoc.data()
+                                          as Map<String, dynamic>;
+                                          final docRefClase =
+                                          asistData['claseId'];
+                                          final Timestamp? fechaTs =
+                                          asistData['fecha'];
+
+                                          if (docRefClase ==
+                                              classDocRef &&
+                                              fechaTs != null) {
+                                            final fecha = fechaTs
+                                                .toDate();
+                                            return fecha.isAfter(
+                                              startOfDay,
+                                            ) &&
+                                                fecha.isBefore(endOfDay);
+                                          }
+                                          return false;
+                                        });
+
+                                        int estadoActual = 2;
+                                        bool enCurso = false;
+
+                                        if (tieneAsistenciaHoy) {
+                                          estadoActual = 1;
+                                        } else {
+                                          final currentTime = TimeOfDay.now();
+                                          final double currentDouble =
+                                              currentTime.hour +
+                                                  currentTime.minute / 60.0;
+                                          final double startDouble =
+                                          _timeStringToDouble(
+                                            horaInicioStr,
                                           );
-                                          final endOfDay = DateTime(
-                                            now.year,
-                                            now.month,
-                                            now.day,
-                                            23,
-                                            59,
-                                            59,
-                                          );
 
-                                          // Buscamos EN MEMORIA si ya hay asistencia hoy
-                                          bool tieneAsistenciaHoy =
-                                              misAsistenciasDocs.any((
-                                                asistDoc,
-                                              ) {
-                                                final asistData =
-                                                    asistDoc.data()
-                                                        as Map<String, dynamic>;
-                                                final docRefClase =
-                                                    asistData['claseId'];
-                                                final Timestamp? fechaTs =
-                                                    asistData['fecha'];
-
-                                                if (docRefClase ==
-                                                        classDocRef &&
-                                                    fechaTs != null) {
-                                                  final fecha = fechaTs
-                                                      .toDate();
-                                                  return fecha.isAfter(
-                                                        startOfDay,
-                                                      ) &&
-                                                      fecha.isBefore(endOfDay);
-                                                }
-                                                return false;
-                                              });
-
-                                          int estadoActual = 2; // Pendiente
-                                          bool enCurso = false;
-
-                                          if (tieneAsistenciaHoy) {
-                                            estadoActual =
-                                                1; // Asistencia (Check)
-                                          } else {
-                                            // Validación de Hora
-                                            final currentTime = TimeOfDay.now();
-                                            final double currentDouble =
-                                                currentTime.hour +
-                                                currentTime.minute / 60.0;
-                                            final double startDouble =
-                                                _timeStringToDouble(
-                                                  horaInicioStr,
-                                                );
-
-                                            double endDouble = 0.0;
-                                            if (horaFinRaw != null) {
-                                              endDouble = _timeStringToDouble(
-                                                horaFinRaw,
-                                              );
-                                            } else if (startDouble > 0) {
-                                              endDouble = startDouble + 1.0;
-                                            }
-
-                                            if (startDouble > 0) {
-                                              if (currentDouble > endDouble) {
-                                                estadoActual =
-                                                    0; // Falta visual
-                                              } else if (currentDouble >=
-                                                      startDouble &&
-                                                  currentDouble <= endDouble) {
-                                                estadoActual = 2;
-                                                enCurso = true; // En curso
-                                              }
-                                            }
+                                          double endDouble = 0.0;
+                                          if (horaFinRaw != null) {
+                                            endDouble = _timeStringToDouble(
+                                              horaFinRaw,
+                                            );
+                                          } else if (startDouble > 0) {
+                                            endDouble = startDouble + 1.0;
                                           }
 
-                                          return _buildClassCard(
-                                            time: horaInicioStr,
-                                            endTime: "",
-                                            subject: materia,
-                                            room: salonDisplay,
-                                            status: estadoActual,
-                                            isInProgress: enCurso,
-                                            accentColor: color,
-                                          );
-                                        },
-                                      ),
+                                          if (startDouble > 0) {
+                                            if (currentDouble > endDouble) {
+                                              estadoActual = 0; // Falta
+                                            } else if (currentDouble >=
+                                                startDouble &&
+                                                currentDouble <= endDouble) {
+                                              estadoActual = 2;
+                                              enCurso = true; // En curso
+                                            }
+                                          }
+                                        }
+
+                                        return _buildClassCard(
+                                          time: horaInicioStr,
+                                          endTime: "",
+                                          subject: materia,
+                                          room: nombreAula,
+                                          status: estadoActual,
+                                          isInProgress: enCurso,
+                                          accentColor: color,
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
                               ),
                             ),
-
                             const SizedBox(height: 100),
                           ],
                         ),
@@ -595,24 +648,24 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   children: [
                     time != "00:00"
                         ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                time,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Color(0xFF1F222E),
-                                ),
-                              ),
-                            ],
-                          )
-                        : const Icon(
-                            Icons.access_time,
-                            size: 20,
-                            color: Colors.grey,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          time,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Color(0xFF1F222E),
                           ),
+                        ),
+                      ],
+                    )
+                        : const Icon(
+                      Icons.access_time,
+                      size: 20,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 20),
                     Expanded(
                       child: Column(

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+// Asegúrate de importar latlong2 para usar LatLng en el helper
+import 'package:latlong2/latlong.dart';
+import 'selector_aula_mapa.dart'; // Importa la pantalla nueva
 
 class ManageAulaModal extends StatefulWidget {
   final String? aulaId;
@@ -29,7 +32,6 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
   @override
   void initState() {
     super.initState();
-    // Pre-llenamos si es edición
     _aulaController = TextEditingController(text: widget.currentName ?? '');
     _latController = TextEditingController(
       text: widget.currentCoords != null
@@ -51,6 +53,34 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
     super.dispose();
   }
 
+  // --- FUNCIÓN PARA ABRIR EL MAPA ---
+  Future<void> _pickLocation() async {
+    // Si ya hay coordenadas escritas, las usamos como iniciales
+    LatLng? initialPos;
+    double? lat = double.tryParse(_latController.text);
+    double? lng = double.tryParse(_lngController.text);
+
+    if (lat != null && lng != null) {
+      initialPos = LatLng(lat, lng);
+    }
+
+    // Navegamos al selector
+    final LatLng? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapPickerScreen(initialPosition: initialPos),
+      ),
+    );
+
+    // Si el usuario confirmó, actualizamos los campos de texto
+    if (result != null) {
+      setState(() {
+        _latController.text = result.latitude.toStringAsFixed(6);
+        _lngController.text = result.longitude.toStringAsFixed(6);
+      });
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -63,11 +93,10 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
 
       final Map<String, dynamic> data = {
         'aula': nombre,
-        'coordenadas': GeoPoint(lat, lng), // Guardamos como GeoPoint nativo
+        'coordenadas': GeoPoint(lat, lng),
       };
 
       if (widget.aulaId == null) {
-        // --- CREAR ---
         await FirebaseFirestore.instance.collection('aulas').add(data);
         if (mounted) {
           Navigator.pop(context);
@@ -79,7 +108,6 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
           );
         }
       } else {
-        // --- EDITAR ---
         await FirebaseFirestore.instance
             .collection('aulas')
             .doc(widget.aulaId)
@@ -108,7 +136,6 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.aulaId != null;
-    // Manejo del teclado
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
@@ -164,12 +191,32 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
                 ),
                 const SizedBox(height: 16),
 
-                // Coordenadas
+                // --- BOTÓN SELECCIONAR EN MAPA ---
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _pickLocation,
+                    icon: const Icon(Icons.map),
+                    label: const Text("SELECCIONAR UBICACIÓN EN EL MAPA"),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Color(0xFF3F51B5)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Coordenadas (Manuales o Autocompletadas)
                 Row(
                   children: [
                     Expanded(
                       child: TextFormField(
                         controller: _latController,
+                        // readOnly: true, // Puedes hacerlo solo lectura si quieres forzar el mapa
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
@@ -180,6 +227,8 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (val) => double.tryParse(val ?? '') == null
                             ? "Inválido"
@@ -190,6 +239,7 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
                     Expanded(
                       child: TextFormField(
                         controller: _lngController,
+                        // readOnly: true,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
@@ -200,6 +250,8 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
                         ),
                         validator: (val) => double.tryParse(val ?? '') == null
                             ? "Inválido"
@@ -225,24 +277,24 @@ class _ManageAulaModalState extends State<ManageAulaModal> {
                     icon: _isLoading
                         ? const SizedBox()
                         : Icon(
-                            isEditing ? Icons.save : Icons.add,
-                            color: Colors.white,
-                          ),
+                      isEditing ? Icons.save : Icons.add,
+                      color: Colors.white,
+                    ),
                     label: _isLoading
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                            ),
-                          )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                      ),
+                    )
                         : Text(
-                            isEditing ? "GUARDAR CAMBIOS" : "CREAR AULA",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                      isEditing ? "GUARDAR CAMBIOS" : "CREAR AULA",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),

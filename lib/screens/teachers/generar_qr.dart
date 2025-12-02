@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+// Paquetes para guardar imagen
+import 'package:screenshot/screenshot.dart';
+import 'package:gal/gal.dart'; // <--- NUEVA LIBRERÍA (Reemplaza a image_gallery_saver)
 
 class TeacherGenerateQRScreen extends StatefulWidget {
   final String claseId;
@@ -25,17 +29,22 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
   String? qrData;
   bool isGenerating = false;
   bool isQrActive = false;
+  bool _claseYaDictadaHoy = false;
 
   // Timer & Control
   Timer? _timer;
   int _remainingSeconds = 300;
-  int _minutosExtraAgregados = 0; // Control local para el límite
-  final int _maxMinutosExtra = 10; // Tope máximo
+  int _minutosExtraAgregados = 0;
+  final int _maxMinutosExtra = 10;
+
+  // Controlador de Captura
+  final ScreenshotController _screenshotController = ScreenshotController();
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _verificarSesionActiva();
+    _verificarEstadoClase();
   }
 
   @override
@@ -44,17 +53,76 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
     super.dispose();
   }
 
-  Future<void> _verificarSesionActiva() async {
+  // --- LÓGICA PARA GUARDAR IMAGEN (ACTUALIZADA CON GAL) ---
+  Future<void> _guardarImagenQR() async {
+    if (qrData == null) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      // 1. Capturar el widget como imagen
+      final Uint8List? imageBytes = await _screenshotController.capture(
+          delay: const Duration(milliseconds: 10),
+          pixelRatio: 3.0
+      );
+
+      if (imageBytes != null) {
+        // 2. Guardar en la galería usando GAL
+        // Gal maneja automáticamente los permisos en Android/iOS modernos
+        await Gal.putImageBytes(imageBytes);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text("¡QR guardado en la galería!"),
+                backgroundColor: Colors.green
+            ),
+          );
+        }
+      }
+    } on GalException catch (e) {
+      // Manejo de errores específicos de galería (ej. permiso denegado)
+      print("Error de Galería: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${e.type.message}"), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      print("Error general guardando imagen: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No se pudo guardar la imagen"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // --- LÓGICA DEL QR Y TIMER ---
+  Future<void> _verificarEstadoClase() async {
     setState(() => isGenerating = true);
     try {
       final doc = await FirebaseFirestore.instance.collection('clase').doc(widget.claseId).get();
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
-        final bool activo = data['qrActivo'] ?? false;
 
+        if (data['ultimaFechaClase'] != null) {
+          final Timestamp ultimaFechaTs = data['ultimaFechaClase'];
+          final DateTime ultimaFecha = ultimaFechaTs.toDate();
+          final DateTime ahora = DateTime.now();
+
+          if (ultimaFecha.year == ahora.year &&
+              ultimaFecha.month == ahora.month &&
+              ultimaFecha.day == ahora.day) {
+            _claseYaDictadaHoy = true;
+          }
+        }
+
+        final bool activo = data['qrActivo'] ?? false;
         if (activo) {
           final String tokenGuardado = data['qrActual'];
-          // Recuperamos cuántos minutos extra se han añadido en esta sesión
           final int minutosExtraDB = data['minutosExtra'] ?? 0;
 
           final parts = tokenGuardado.split('_');
@@ -63,7 +131,6 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
             final int now = DateTime.now().millisecondsSinceEpoch;
             final int diferenciaSegundos = ((now - timestampGeneracion) / 1000).round();
 
-            // FÓRMULA CORREGIDA: 5 min base + minutos extra guardados
             final int duracionTotalSeconds = 300 + (minutosExtraDB * 60);
             final int tiempoRestante = duracionTotalSeconds - diferenciaSegundos;
 
@@ -72,7 +139,7 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
                 qrData = tokenGuardado;
                 isQrActive = true;
                 _remainingSeconds = tiempoRestante;
-                _minutosExtraAgregados = minutosExtraDB; // Sincronizamos el límite
+                _minutosExtraAgregados = minutosExtraDB;
                 _startTimer();
               });
             } else {
@@ -82,10 +149,88 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
         }
       }
     } catch (e) {
-      print("Error verificando sesión: $e");
+      print("Error verificando estado: $e");
     } finally {
       if (mounted) setState(() => isGenerating = false);
     }
+  }
+
+  // --- GENERAR NUEVO CÓDIGO ---
+  Future<void> _generarNuevoQR() async {
+    if (_claseYaDictadaHoy && !isQrActive) {
+      _mostrarAlertaYaGenerado();
+      return;
+    }
+
+    setState(() => isGenerating = true);
+
+    try {
+      final docRef = FirebaseFirestore.instance.collection('clase').doc(widget.claseId);
+      final docSnap = await docRef.get();
+
+      if (docSnap.exists) {
+        final data = docSnap.data();
+        if (data != null && data.containsKey('ultimaFechaClase')) {
+          final Timestamp ultimaFechaTs = data['ultimaFechaClase'];
+          final DateTime ultimaFecha = ultimaFechaTs.toDate();
+          final DateTime ahora = DateTime.now();
+
+          if (ultimaFecha.year == ahora.year &&
+              ultimaFecha.month == ahora.month &&
+              ultimaFecha.day == ahora.day) {
+
+            setState(() {
+              _claseYaDictadaHoy = true;
+              isGenerating = false;
+            });
+            _mostrarAlertaYaGenerado();
+            return;
+          }
+        }
+      }
+
+      String nuevoTokenQR = "${widget.claseId}_${DateTime.now().millisecondsSinceEpoch}";
+
+      await docRef.update({
+        'qrActual': nuevoTokenQR,
+        'qrActivo': true,
+        'totalClasesDictadas': FieldValue.increment(1),
+        'ultimaFechaClase': FieldValue.serverTimestamp(),
+        'minutosExtra': 0,
+      });
+
+      setState(() {
+        qrData = nuevoTokenQR;
+        isQrActive = true;
+        _claseYaDictadaHoy = true;
+        _remainingSeconds = 300;
+        _minutosExtraAgregados = 0;
+        isGenerating = false;
+      });
+
+      _startTimer();
+
+    } catch (e) {
+      print("Error generando QR: $e");
+      setState(() => isGenerating = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
+  }
+
+  void _mostrarAlertaYaGenerado() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Acción no permitida"),
+        content: const Text("Ya generaste un código para esta clase el día de hoy.\nSolo se permite un registro por clase al día."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Entendido"),
+          )
+        ],
+      ),
+    );
   }
 
   void _startTimer() {
@@ -119,89 +264,24 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
     }
   }
 
-  Future<void> _generarNuevoQR() async {
-    setState(() => isGenerating = true);
-
-    String nuevoTokenQR = "${widget.claseId}_${DateTime.now().millisecondsSinceEpoch}";
-
-    try {
-      // 1. Consultar la clase para ver cuándo fue la última vez que se dictó
-      final docRef = FirebaseFirestore.instance.collection('clase').doc(widget.claseId);
-      final docSnap = await docRef.get();
-
-      bool incrementarContador = true;
-
-      if (docSnap.exists) {
-        final data = docSnap.data();
-        if (data != null && data.containsKey('ultimaFechaClase')) {
-          final Timestamp ultimaFechaTs = data['ultimaFechaClase'];
-          final DateTime ultimaFecha = ultimaFechaTs.toDate();
-          final DateTime ahora = DateTime.now();
-
-          // Si la última clase registrada fue HOY, no incrementamos el contador
-          if (ultimaFecha.year == ahora.year &&
-              ultimaFecha.month == ahora.month &&
-              ultimaFecha.day == ahora.day) {
-            incrementarContador = false;
-            print("📅 La clase ya se registró hoy. No se incrementará el contador.");
-          }
-        }
-      }
-
-      // 2. Preparar actualización
-      final Map<String, dynamic> updates = {
-        'qrActual': nuevoTokenQR,
-        'qrActivo': true,
-        'minutosExtra': 0, // Reiniciamos los minutos extra de la sesión
-      };
-
-      // Solo si es una nueva clase (otro día), incrementamos y actualizamos fecha
-      if (incrementarContador) {
-        updates['totalClasesDictadas'] = FieldValue.increment(1);
-        updates['ultimaFechaClase'] = FieldValue.serverTimestamp();
-      }
-
-      await docRef.update(updates);
-
-      setState(() {
-        qrData = nuevoTokenQR;
-        isQrActive = true;
-        _remainingSeconds = 300;
-        _minutosExtraAgregados = 0; // Reiniciamos localmente
-        isGenerating = false;
-      });
-
-      _startTimer();
-
-    } catch (e) {
-      print("Error generando QR: $e");
-      setState(() => isGenerating = false);
-    }
-  }
-
   Future<void> _anadirTiempo() async {
     if (!isQrActive) return;
-
-    // Validación del tope (10 min)
     if (_minutosExtraAgregados >= _maxMinutosExtra) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Has alcanzado el límite máximo de tiempo extra."))
       );
       return;
     }
-
     setState(() {
-      _remainingSeconds += 60; // Visualmente sumamos 1 min inmediato
+      _remainingSeconds += 60;
       _minutosExtraAgregados++;
     });
-
-    // Guardamos en Firebase para que persista si sale de la pantalla
     try {
       await FirebaseFirestore.instance.collection('clase').doc(widget.claseId).update({
         'minutosExtra': FieldValue.increment(1),
       });
     } catch (e) {
-      print("Error guardando tiempo extra: $e");
+      print("Error guardando tiempo: $e");
     }
   }
 
@@ -218,8 +298,9 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
     final Color greyText = const Color(0xFF757575);
     final Color lightBackgroundCard = const Color(0xFFF5F6FA);
 
-    // Calculamos si el botón de añadir debe estar habilitado
     final bool puedeAnadirMas = isQrActive && _minutosExtraAgregados < _maxMinutosExtra;
+    final bool puedeGenerar = !isQrActive && !_claseYaDictadaHoy;
+    final bool sesionTerminada = !isQrActive && _claseYaDictadaHoy;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -252,95 +333,126 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
               const SizedBox(height: 20),
 
               // --- TEMPORIZADOR ---
-              Text(
-                  isQrActive ? "Código expira en" : "Código inactivo",
-                  style: TextStyle(color: greyText, fontSize: 16)
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _timerString,
-                style: TextStyle(
-                    color: isQrActive ? primaryGreen : Colors.grey,
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold
+              if (sesionTerminada)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.shade100)
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.lock_clock, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text("Clase finalizada por hoy", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                )
+              else ...[
+                Text(
+                    isQrActive ? "Código expira en" : "Listo para iniciar",
+                    style: TextStyle(color: greyText, fontSize: 16)
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  isQrActive ? _timerString : "5:00",
+                  style: TextStyle(
+                      color: isQrActive ? primaryGreen : Colors.grey,
+                      fontSize: 48,
+                      fontWeight: FontWeight.bold
+                  ),
+                ),
+              ],
 
               // BOTÓN AÑADIR TIEMPO
               if (isQrActive)
                 TextButton.icon(
-                  onPressed: puedeAnadirMas ? _anadirTiempo : null, // Se deshabilita si llegó al tope
+                  onPressed: puedeAnadirMas ? _anadirTiempo : null,
                   style: TextButton.styleFrom(
                     foregroundColor: puedeAnadirMas ? primaryGreen : Colors.grey,
                     backgroundColor: puedeAnadirMas ? primaryGreen.withOpacity(0.1) : Colors.grey.shade100,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   ),
                   icon: const Icon(Icons.add_circle_outline, size: 18),
-                  label: Text(
-                    puedeAnadirMas
-                        ? "Añadir 1 min extra"
-                        : "Límite alcanzado (+${_maxMinutosExtra} min)",
-                  ),
+                  label: Text(puedeAnadirMas ? "Añadir 1 min extra" : "Límite alcanzado"),
                 )
               else
                 const SizedBox(height: 48),
 
               const SizedBox(height: 30),
 
-              // --- SECCIÓN QR ---
-              Container(
-                padding: const EdgeInsets.all(30),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: isGenerating
-                    ? const SizedBox(
+              // --- SECCIÓN QR CON CAPTURA ---
+              Screenshot(
+                controller: _screenshotController,
+                child: Container(
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: isGenerating
+                      ? const SizedBox(
+                      height: 200,
+                      width: 200,
+                      child: Center(child: CircularProgressIndicator())
+                  )
+                      : (isQrActive && qrData != null)
+                      ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(widget.nombreClase, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 5),
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          QrImageView(
+                            data: qrData!,
+                            version: QrVersions.auto,
+                            size: 200.0,
+                            foregroundColor: darkText,
+                            backgroundColor: Colors.white,
+                          ),
+                          // Esquinas decorativas (Opcional, solo si no estorban)
+                          // _buildCornerBrackets(greyText.withOpacity(0.3)),
+                        ],
+                      ),
+                    ],
+                  )
+                      : Container(
                     height: 200,
                     width: 200,
-                    child: Center(child: CircularProgressIndicator())
-                )
-                    : (qrData != null && isQrActive)
-                    ? Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    QrImageView(
-                      data: qrData!,
-                      version: QrVersions.auto,
-                      size: 200.0,
-                      foregroundColor: darkText,
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                            sesionTerminada ? Icons.lock_clock : Icons.qr_code_2,
+                            size: 50,
+                            color: Colors.grey.shade300
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          sesionTerminada ? "Sesión Finalizada" : "Presiona Generar",
+                          style: TextStyle(color: Colors.grey.shade400),
+                        )
+                      ],
                     ),
-                    _buildCornerBrackets(greyText.withOpacity(0.3)),
-                  ],
-                )
-                    : Container(
-                  height: 200,
-                  width: 200,
-                  alignment: Alignment.center,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.qr_code_2, size: 50, color: Colors.grey.shade300),
-                      const SizedBox(height: 10),
-                      Text(
-                        "Presiona Generar",
-                        style: TextStyle(color: Colors.grey.shade400),
-                      )
-                    ],
                   ),
                 ),
               ),
 
               const SizedBox(height: 30),
 
-              // --- TARJETA DE INFORMACIÓN ---
+              // INFO CARD
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                 decoration: BoxDecoration(
@@ -379,21 +491,19 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  // Si está activo, deshabilitamos el botón (null en onPressed)
-                  onPressed: isQrActive ? null : _generarNuevoQR,
+                  onPressed: puedeGenerar ? _generarNuevoQR : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryGreen,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade300, // Color cuando está desactivado
-                    disabledForegroundColor: Colors.grey.shade500,
+                    disabledBackgroundColor: Colors.grey.shade300,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                     elevation: isQrActive ? 0 : 2,
                   ),
-                  icon: Icon(isQrActive ? Icons.check : Icons.qr_code),
+                  icon: Icon(isQrActive ? Icons.check : (sesionTerminada ? Icons.block : Icons.qr_code)),
                   label: Text(
-                    isQrActive ? "Código Activo" : "Generar Código QR",
+                    isQrActive ? "Código Activo" : (sesionTerminada ? "Clase Finalizada" : "Generar Código QR"),
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -401,15 +511,13 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
 
               const SizedBox(height: 20),
 
-              // Botón de descargar (Solo si hay QR visible)
+              // Botón de descargar
               if (isQrActive)
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      debugPrint("Descargar imagen");
-                    },
+                    onPressed: _isSaving ? null : _guardarImagenQR,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: darkText,
                       side: BorderSide(color: Colors.grey.shade300),
@@ -417,10 +525,12 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    icon: const Icon(Icons.image_outlined),
-                    label: const Text(
-                      "Descargar QR como imagen",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    icon: _isSaving
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.image_outlined),
+                    label: Text(
+                      _isSaving ? "Guardando..." : "Descargar QR como imagen",
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -433,6 +543,7 @@ class _TeacherGenerateQRScreenState extends State<TeacherGenerateQRScreen> {
     );
   }
 
+  // Si quieres mantener las esquinas decorativas
   Widget _buildCornerBrackets(Color color) {
     double size = 240;
     double thickness = 2;
