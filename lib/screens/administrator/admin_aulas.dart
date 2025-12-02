@@ -166,7 +166,7 @@ class AdminAulasScreen extends StatelessWidget {
               coordsDisplay =
                   "${rawCoords.latitude.toStringAsFixed(5)}, ${rawCoords.longitude.toStringAsFixed(5)}";
             } else if (rawCoords is List && rawCoords.length >= 2) {
-              // Soporte para formato array [lat, lng] legacy
+              // Soporte para formato array [lat, lng]
               geoPoint = GeoPoint(rawCoords[0], rawCoords[1]);
               coordsDisplay = "${rawCoords[0]}, ${rawCoords[1]}";
             }

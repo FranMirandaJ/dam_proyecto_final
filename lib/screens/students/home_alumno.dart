@@ -19,22 +19,18 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   int _currentIndex = 0;
   final Color primaryColor = const Color(0xFF2563EB);
 
-  // LISTA DE PANTALLAS
   late final List<Widget> _screens = [
-    StudentDashboardScreen(),      // Índice 0
-    Mapa(),                        // Índice 1
-    StudentNotificationScreen(),   // Índice 2
+    StudentDashboardScreen(),
+    Mapa(),
+    StudentNotificationScreen(),
   ];
 
-  // --- 1. AQUÍ INICIAMOS LA AUTO-SUSCRIPCIÓN ---
   @override
   void initState() {
     super.initState();
-    // Al entrar al Home, verificamos silenciosamente las suscripciones
     _verificarSuscripcionesEnSegundoPlano();
   }
 
-  // --- 2. ESTA ES LA FUNCIÓN SILENCIOSA QUE CONECTA AL ALUMNO ---
   void _verificarSuscripcionesEnSegundoPlano() async {
     User? usuario = FirebaseAuth.instance.currentUser;
     if (usuario == null) return;
@@ -42,11 +38,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     try {
       final fcm = FirebaseMessaging.instance;
 
-      // A. Pedimos permiso (si ya lo tiene, no hace nada; si no, pregunta)
       await fcm.requestPermission(alert: true, badge: true, sound: true);
 
-      // B. Buscamos las clases (Misma lógica que usamos en notificaciones)
-      // Creamos la referencia del alumno para buscar en el array
       DocumentReference refAlumno = FirebaseFirestore.instance
           .collection('usuario')
           .doc(usuario.uid);
@@ -56,17 +49,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           .where('alumnos', arrayContains: refAlumno)
           .get();
 
-      // C. Nos suscribimos a todas las clases encontradas
       for (var doc in querySnapshot.docs) {
         String claseId = doc.id;
         String tema = "clase_$claseId";
 
-        // Esto es seguro: si ya estás suscrito, Firebase lo ignora.
         await fcm.subscribeToTopic(tema);
         print("✅ (Auto-Suscripción en Home) Conectado al tema: $tema");
       }
     } catch (e) {
-      // Error silencioso para no molestar al usuario
       print("⚠️ Nota: Error leve al intentar suscribirse en segundo plano: $e");
     }
   }
@@ -74,14 +64,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // Esto ayuda a que el fondo se vea bien detrás del notch
-
-      // Lógica para mostrar la pantalla correcta.
+      extendBody: true,
       body: _screens[_currentIndex],
-
-      // --- 3. BOTÓN FLOTANTE (INTACTO) ---
       floatingActionButton: Transform.translate(
-        offset: const Offset(0, -10), // Mueve el botón 10 píxeles hacia arriba
+        offset: const Offset(0, -10),
         child: SizedBox(
           width: 40,
           height: 40,
@@ -99,8 +85,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-      // --- 4. BARRA INFERIOR (INTACTA) ---
       bottomNavigationBar: BottomAppBar(
         child: SizedBox(
           height: 60,

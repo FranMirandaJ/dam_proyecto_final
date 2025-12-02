@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class CrearNotificacionScreen extends StatefulWidget {
-  // Recibimos el ID de la clase (grupo) seleccionado por el profe
+
   final String claseIdSeleccionada;
 
   const CrearNotificacionScreen({Key? key, required this.claseIdSeleccionada}) : super(key: key);
@@ -13,7 +13,7 @@ class CrearNotificacionScreen extends StatefulWidget {
 }
 
 class _CrearNotificacionScreenState extends State<CrearNotificacionScreen> {
-  // Controladores para los campos de texto
+
   final TextEditingController _tituloController = TextEditingController();
   final TextEditingController _cuerpoController = TextEditingController();
 
@@ -30,25 +30,20 @@ class _CrearNotificacionScreenState extends State<CrearNotificacionScreen> {
     });
 
     try {
-      // 1. Obtener el usuario actual (Docente)
       User? usuarioActual = FirebaseAuth.instance.currentUser;
 
       if (usuarioActual != null) {
-        // 2. Crear las REFERENCIAS (Importante para que se vea como en tu imagen)
-        // Esto crea el link '/clase/ID' y '/usuario/ID'
         DocumentReference refClase = FirebaseFirestore.instance.collection('clase').doc(widget.claseIdSeleccionada);
         DocumentReference refDocente = FirebaseFirestore.instance.collection('usuario').doc(usuarioActual.uid);
 
-        // 3. Guardar en Firestore
         await FirebaseFirestore.instance.collection('notificaciones').add({
-          'titulo': _tituloController.text.trim(), // Campo nuevo
+          'titulo': _tituloController.text.trim(),
           'cuerpo': _cuerpoController.text.trim(),
-          'fecha': FieldValue.serverTimestamp(), // Usa la hora del servidor (más seguro)
+          'fecha': FieldValue.serverTimestamp(), // Usa la hora del servidor
           'claseId': refClase, // Se guarda como Reference
           'docenteId': refDocente, // Se guarda como Reference
         });
 
-        // Éxito
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Notificación enviada con éxito")));
         Navigator.pop(context); // Regresar a la pantalla anterior
       }
@@ -70,7 +65,6 @@ class _CrearNotificacionScreenState extends State<CrearNotificacionScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // --- CAMPO DE TÍTULO (NUEVO) ---
             TextField(
               controller: _tituloController,
               decoration: InputDecoration(
@@ -82,10 +76,9 @@ class _CrearNotificacionScreenState extends State<CrearNotificacionScreen> {
             ),
             SizedBox(height: 16),
 
-            // --- CAMPO DE CUERPO (EXISTENTE) ---
             TextField(
               controller: _cuerpoController,
-              maxLines: 5, // Para que sea un cuadro de texto grande
+              maxLines: 5,
               decoration: InputDecoration(
                 labelText: 'Mensaje',
                 hintText: 'Escribe aquí el contenido de la notificación...',
@@ -95,7 +88,6 @@ class _CrearNotificacionScreenState extends State<CrearNotificacionScreen> {
             ),
             SizedBox(height: 24),
 
-            // --- BOTÓN DE ENVIAR ---
             SizedBox(
               width: double.infinity,
               height: 50,

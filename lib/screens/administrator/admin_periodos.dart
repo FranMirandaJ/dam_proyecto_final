@@ -56,16 +56,13 @@ class AdminPeriodosScreen extends StatelessWidget {
 
             final dateFormat = DateFormat('dd MMM yyyy');
 
-            // --- LÓGICA DE ESTADO (VISUAL) ---
             final now = DateTime.now();
 
-            // Estado por defecto
             String estadoLabel = "DESCONOCIDO";
             Color estadoColor = Colors.grey;
             bool isCurrent = false;
 
             if (inicio != null && fin != null) {
-              // Ajustamos fin al final del día para comparación justa
               final endOfFin = DateTime(
                 fin.year,
                 fin.month,
@@ -152,8 +149,6 @@ class AdminPeriodosScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ),
-                // Quitamos el icono de basura (trailing)
-                // Solo dejamos el tap para editar si es necesario corregir fechas
                 trailing: const Icon(Icons.edit, size: 18, color: Colors.grey),
                 onTap: () {
                   showModalBottomSheet(

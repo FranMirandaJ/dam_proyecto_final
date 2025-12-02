@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; // IMPORTANTE: Agregado de nuevo
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class StudentNotificationScreen extends StatefulWidget {
   const StudentNotificationScreen({Key? key}) : super(key: key);
@@ -27,8 +27,6 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
     super.initState();
     _cargaInicialFuture = _cargarDatosIniciales();
   }
-
-  // --- LÓGICA DE CARGA Y PERSISTENCIA ---
 
   Future<void> _cargarDatosIniciales() async {
     if (currentUser == null)
@@ -75,18 +73,14 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
     }
   }
 
-  // --- SUSCRIPCIÓN A FIREBASE MESSAGING (RESTAURADO) ---
   void _activarNotificacionesFCM(List<DocumentReference> misClases) async {
     try {
       final fcm = FirebaseMessaging.instance;
-      // Pedimos permiso nuevamente para asegurar
       await fcm.requestPermission(alert: true, badge: true, sound: true);
 
-      // Nos suscribimos a cada clase encontrada
       for (var ref in misClases) {
         final topic = "clase_${ref.id}";
         await fcm.subscribeToTopic(topic);
-        // debugPrint("Suscrito al tema: $topic"); // Descomentar para depurar
       }
     } catch (e) {
       debugPrint("Error suscribiendo a FCM: $e");
@@ -122,10 +116,8 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
         listaClasesRefs.add(doc.reference);
       }
 
-      // IMPORTANTE: Aquí restauramos la suscripción para que las alertas vuelvan a funcionar
       _activarNotificacionesFCM(listaClasesRefs);
 
-      // Límite de Firestore para 'whereIn' es 10
       if (listaClasesRefs.length > 10) {
         listaClasesRefs = listaClasesRefs.take(10).toList();
       }
@@ -186,7 +178,7 @@ class _StudentNotificationScreenState extends State<StudentNotificationScreen>
                   if (!snapshot.hasData) return const SizedBox();
                   final docs = snapshot.data!.docs;
 
-                  // Contador inteligente: Total - Leídas localmente
+                  // Contador de notificaciones no leídas
                   int sinLeer = docs
                       .where((doc) => !_leidas.contains(doc.id))
                       .length;

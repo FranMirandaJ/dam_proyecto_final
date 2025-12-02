@@ -26,13 +26,11 @@ class _LoginRegisterState extends State<LoginRegister> {
   String? _errorMessage;
 
   void handlerSubmit() async {
-    // Clear previous error messages
     setState(() {
       _errorMessage = null;
       _isLoading = true;
     });
 
-    // Hide keyboard
     FocusScope.of(context).unfocus();
 
     try {
@@ -76,12 +74,10 @@ class _LoginRegisterState extends State<LoginRegister> {
           fullName: fullNameController.text,
         );
 
-        // Clear fields
         fullNameController.clear();
         userController.clear();
         passwordController.clear();
 
-        // Show success message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -93,7 +89,6 @@ class _LoginRegisterState extends State<LoginRegister> {
           );
         }
 
-        // Switch to login form
         setState(() {
           _isLogin = true;
         });

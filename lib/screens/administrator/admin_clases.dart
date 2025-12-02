@@ -5,7 +5,6 @@ import 'widgets/manage_clase_modal.dart';
 class AdminClasesScreen extends StatelessWidget {
   const AdminClasesScreen({Key? key}) : super(key: key);
 
-  // --- CONFIRMACIÓN VISUAL ---
   Future<void> _confirmarEliminacion(
     BuildContext context,
     String claseId,
@@ -22,7 +21,7 @@ class AdminClasesScreen extends StatelessWidget {
             Text("Estás a punto de eliminar la materia '$nombreClase'."),
             const SizedBox(height: 10),
             const Text(
-              "⚠️ ADVERTENCIA: Esta acción eliminará permanentemente la clase Y TODO SU HISTORIAL DE ASISTENCIAS.",
+              "ADVERTENCIA: Esta acción eliminará permanentemente la clase Y TODO SU HISTORIAL DE ASISTENCIAS.",
               style: TextStyle(
                 color: Colors.red,
                 fontWeight: FontWeight.bold,
@@ -39,7 +38,7 @@ class AdminClasesScreen extends StatelessWidget {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              Navigator.pop(ctx); // Cerrar diálogo
+              Navigator.pop(ctx);
               await _ejecutarEliminacionCascada(context, claseId);
             },
             child: const Text(
@@ -57,7 +56,6 @@ class AdminClasesScreen extends StatelessWidget {
     BuildContext context,
     String claseId,
   ) async {
-    // 1. Mostrar Loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -68,29 +66,23 @@ class AdminClasesScreen extends StatelessWidget {
       final db = FirebaseFirestore.instance;
       final claseRef = db.collection('clase').doc(claseId);
 
-      // 2. Buscar todas las asistencias asociadas a esta clase
-      //    (Basado en tu modelo, el campo es 'claseId' y es una Reference)
       final asistenciasQuery = await db
           .collection('asistencia')
           .where('claseId', isEqualTo: claseRef)
           .get();
 
-      // 3. Preparar el Batch (Lote) para borrar todo junto
       final batch = db.batch();
 
-      // A. Borrar cada registro de asistencia encontrado
       for (var doc in asistenciasQuery.docs) {
         batch.delete(doc.reference);
       }
 
-      // B. Borrar la clase en sí
       batch.delete(claseRef);
 
-      // 4. Ejecutar el borrado atómico
       await batch.commit();
 
       if (context.mounted) {
-        Navigator.pop(context); // Cerrar Loading
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -102,7 +94,7 @@ class AdminClasesScreen extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context); // Cerrar Loading
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Error al eliminar: $e"),
