@@ -1,16 +1,25 @@
-# proyecto_final
+Equipo de trabajo:
+- Francisco Salvador Miranda Jaramillo 
+- José de Jesús Robles Pérez
 
-A new Flutter project.
+Dependencias usadas en el proyecto (pupspec.yaml):
+  firebase_core: ^4.2.1
+  cloud_firestore: ^6.1.0
+  firebase_auth: ^6.1.2
+  firebase_database: ^12.1.0
+  provider: ^6.1.2
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+  geolocator: ^14.0.2
+  intl: ^0.19.0
+  firebase_messaging: ^16.0.4
+  shared_preferences: ^2.5.3
+  screenshot: ^3.0.0
+  permission_handler: ^11.3.1
+  gal: ^2.3.2
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Permisos de android (AndroidManifest.xml):
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
